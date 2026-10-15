@@ -10,6 +10,33 @@ export planar_cocalibrate
 export PlanarDoubleDelayCalibration, planar_double_delay_calibrate
 export planar_group_double_delay_calibrate, planar_y_to_abcd, planar_abcd_to_y
 
+# BLAS remains the normal path. Recover only nonfinite entries when an
+# intermediate dot product overflowed before a representable cancellation.
+function _calibration_block_product(A,B,C=nothing;subtract=false)
+    result=C===nothing ? A*B : subtract ? C-A*B : C+A*B
+    all(isfinite,result) && return result
+    bits=_planar_terminal_product_precision(size(A,2))
+    re,im,left,right,product=ntuple(_->BigFloat(0.;precision=bits),5)
+    for j in axes(result,2),i in axes(result,1)
+        isfinite(result[i,j]) && continue
+        initial=C===nothing ? 0.0im : _planar_stored_phasor(C[i,j])
+        _planar_wide_set!(re,real(initial));_planar_wide_set!(im,imag(initial))
+        for k in axes(A,2)
+            a=_planar_stored_phasor(A[i,k]);b=_planar_stored_phasor(B[k,j])
+            subtract && (a=-a)
+            for (x,y,target,negative) in ((real(a),real(b),re,false),
+                    (imag(a),imag(b),re,true),(real(a),imag(b),im,false),
+                    (imag(a),real(b),im,false))
+                _planar_wide_set!(left,x);_planar_wide_set!(right,y)
+                _planar_wide_mul!(product,left,right)
+                negative ? _planar_wide_sub!(target,target,product) : _planar_wide_add!(target,target,product)
+            end
+        end
+        result[i,j]=complex(Float64(re),Float64(im))
+    end
+    return result
+end
+
 """Voltage/current transfer matrix of a 2N-port admittance network,
 ordered `[left conductors; right conductors]`. The state convention is
 `[Vleft;Ileft]=T*[Vright;-Iright]`. Requires an invertible through block."""
@@ -18,10 +45,14 @@ function planar_y_to_abcd(Y::AbstractMatrix)
     n2>0 && iseven(n2) || throw(ArgumentError("transfer needs an even positive number of ports"))
     _check_square(Y,n2,"transfer conversion");_check_finite(Y,"transfer conversion")
     n=n2÷2;left=1:n;right=n+1:n2
+    n==1 && return _abcd_of_y(Y)
     F=lu(Matrix{ComplexF64}(Y[right,left]);check=false)
     issuccess(F) || throw(ArgumentError("transfer through-admittance block is singular"))
     A=-(F\Y[right,right]);B=-(F\Matrix{ComplexF64}(I,n,n))
-    return [A B;Y[left,right]+Y[left,left]*A Y[left,left]*B]
+    C=_calibration_block_product(Y[left,left],A,Y[left,right])
+    D=_calibration_block_product(Y[left,left],B)
+    result=[A B;C D];_check_finite(result,"transfer conversion result")
+    return result
 end
 
 """Inverse of [`planar_y_to_abcd`](@ref), requiring an invertible B
@@ -31,11 +62,16 @@ function planar_abcd_to_y(T::AbstractMatrix)
     n2>0 && iseven(n2) || throw(ArgumentError("transfer needs an even positive dimension"))
     _check_square(T,n2,"transfer inverse");_check_finite(T,"transfer inverse")
     n=n2÷2;l=1:n;r=n+1:n2
+    n==1 && return _y_of_abcd(T)
     A,B,C,D=T[l,l],T[l,r],T[r,l],T[r,r]
     F=lu(Matrix{ComplexF64}(B);check=false)
     issuccess(F) || throw(ArgumentError("transfer B block is singular"))
     inverseB=F\Matrix{ComplexF64}(I,n,n)
-    return [D*inverseB C-D*(F\A);-inverseB F\A]
+    inverseBA=F\A
+    Y11=_calibration_block_product(D,inverseB)
+    Y12=_calibration_block_product(D,inverseBA,C;subtract=true)
+    result=[Y11 Y12;-inverseB inverseBA];_check_finite(result,"transfer inverse result")
+    return result
 end
 
 """Co-calibrated multiconductor double-delay launch extraction from two
@@ -54,7 +90,10 @@ function planar_group_double_delay_calibrate(Y1::AbstractMatrix,Y2::AbstractMatr
     n2=size(Y1,1);n=n2÷2
     n2>0 && iseven(n2) || throw(ArgumentError("group calibration needs an even port count"))
     _check_square(Y2,n2,"group line standard")
-    _enforce_payload_limit(_checked_array_payload_bytes(ComplexF64,32,n2,n2),
+    _enforce_payload_limit(_checked_payload_sum("group calibration",
+        _checked_array_payload_bytes(ComplexF64,32,n2,n2),
+        _checked_array_payload_bytes(UInt8,
+            _planar_wide_scalar_payload(_planar_terminal_product_precision(n)),5)),
         max_bytes,"group calibration","max_bytes")
     # Normalize voltage/current units before logarithm and exponential.
     refs=vcat(fill(sqrt(50.0),n),fill(inv(sqrt(50.0)),n))

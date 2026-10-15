@@ -950,32 +950,74 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
     # matrices; scalar combinations do not create additional dense temporaries.
     N = rwg.nedges
     A = Matrix{ComplexF64}(undef, 2N, 2N)
-    A11 = @view A[1:N, 1:N]
-    A12 = @view A[1:N, (N + 1):(2N)]
-    A21 = @view A[(N + 1):(2N), 1:N]
-    A22 = @view A[(N + 1):(2N), (N + 1):(2N)]
-    A11 .= c_ze_ext .* Ze_ext .+ c_ze_int .* Ze_int
-    A22 .= c_zh_ext .* Zh_ext .+ c_zh_int .* Zh_int
-    A12 .= .-(c_ze_ext .* K_ext .+ c_ze_int .* K_int)
-    A21 .= c_zh_ext .* K_ext .+ c_zh_int .* K_int
-
-    # The second-kind identity is local. Keep its O(Nt) triplets compact and
-    # accumulate them directly into the two off-diagonal dense blocks.
-    if (c_ze_ext != c_ze_int) || (c_zh_ext != c_zh_int)
-        Gram = _ncross_gram_3d(
+    coefficients = (c_ze_ext, c_ze_int, c_zh_ext, c_zh_int)
+    gram_coefficients = _surface_sie_gram_coefficients_3d(coefficients)
+    Gram = if any(!iszero, gram_coefficients)
+        _ncross_gram_3d(
             mesh, rwg;
             quad_order=quad_order,
             max_storage_bytes=work_limit)
-        _add_scaled_matrix!(
-            A12, -(c_ze_ext - c_ze_int) * 0.5, Gram)
-        _add_scaled_matrix!(
-            A21, (c_zh_ext - c_zh_int) * 0.5, Gram)
+    else
+        nothing
     end
+    _surface_sie_fill_dense_blocks!(A, Ze_ext, Ze_int, Zh_ext, Zh_int,
+        K_ext, K_int, coefficients, Gram, gram_coefficients)
     all(isfinite, A) ||
         throw(OverflowError(
             "dielectric SIE matrix contains entries outside the " *
             "representable ComplexF64 range"))
     return A, exterior, interior
+end
+
+function _surface_sie_fill_dense_blocks!(
+        A::Matrix{ComplexF64}, Ze_ext::Matrix{ComplexF64},
+        Ze_int::Matrix{ComplexF64}, Zh_ext::Matrix{ComplexF64},
+        Zh_int::Matrix{ComplexF64}, K_ext::Matrix{ComplexF64},
+        K_int::Matrix{ComplexF64}, coefficients::NTuple{4,ComplexF64},
+        gram::Union{Nothing,LocalMassMatrix{ComplexF64}},
+        gram_coefficients::NTuple{2,ComplexF64})
+    c_ze_ext, c_ze_int, c_zh_ext, c_zh_int = coefficients
+    c_g_e, c_g_h = gram_coefficients
+    N = size(Ze_ext, 1)
+    position = 1
+    entries = gram === nothing ? 0 : length(gram.vals)
+    # Stream the local Gram entries in column order. Regional and identity
+    # terms are contracted together before narrowing, without an N² Gram
+    # materialization or a triplet-list scan for every dense entry.
+    @inbounds for column in 1:N, row in 1:N
+        gram_value = zero(ComplexF64)
+        if gram !== nothing && position <= entries
+            entry = gram.col_order[position]
+            if gram.rows[entry] == row && gram.cols[entry] == column
+                gram_value = gram.vals[entry]
+                position += 1
+            end
+        end
+        A[row, column] = _surface_sie_pair_sum_3d((
+            (c_ze_ext, Ze_ext[row, column]),
+            (c_ze_int, Ze_int[row, column])), row, column)
+        A[N + row, N + column] = _surface_sie_pair_sum_3d((
+            (c_zh_ext, Zh_ext[row, column]),
+            (c_zh_int, Zh_int[row, column])), N + row, N + column)
+        if gram === nothing
+            A[row, N + column] = _surface_sie_pair_sum_3d((
+                (-c_ze_ext, K_ext[row, column]),
+                (-c_ze_int, K_int[row, column])), row, N + column)
+            A[N + row, column] = _surface_sie_pair_sum_3d((
+                (c_zh_ext, K_ext[row, column]),
+                (c_zh_int, K_int[row, column])), N + row, column)
+        else
+            A[row, N + column] = _surface_sie_pair_sum_3d((
+                (-c_ze_ext, K_ext[row, column]),
+                (-c_ze_int, K_int[row, column]),
+                (c_g_e, gram_value)), row, N + column)
+            A[N + row, column] = _surface_sie_pair_sum_3d((
+                (c_zh_ext, K_ext[row, column]),
+                (c_zh_int, K_int[row, column]),
+                (c_g_h, gram_value)), N + row, column)
+        end
+    end
+    return A
 end
 
 @inline function _surface_sie_pair_weights_3d(exterior::ComplexF64,
@@ -1012,6 +1054,17 @@ function _surface_sie_coefficients_3d(formulation::Symbol,
         _validated_surface_sie_formulation_3d(formulation)
         error("unreachable dielectric SIE formulation branch")
     end
+end
+
+function _surface_sie_gram_coefficients_3d(coefficients::NTuple{4,ComplexF64})
+    ze_ext, ze_int, zh_ext, zh_int = coefficients
+    electric = ze_ext == ze_int ? zero(ComplexF64) :
+        _surface_sie_pair_sum_3d(((ComplexF64(-0.5), ze_ext),
+                                 (ComplexF64(0.5), ze_int)), 0, 0)
+    magnetic = zh_ext == zh_int ? zero(ComplexF64) :
+        _surface_sie_pair_sum_3d(((ComplexF64(0.5), zh_ext),
+                                 (ComplexF64(-0.5), zh_int)), 0, 0)
+    return electric, magnetic
 end
 
 function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
@@ -1129,8 +1182,8 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
 
     # Off-diagonal second-kind identity (nhat x Gram) residue coefficients.
     # E-row K block enters with sign -, H-row with sign +.
-    c_g_e = -(c_ze_ext - c_ze_int) * 0.5
-    c_g_h = (c_zh_ext - c_zh_int) * 0.5
+    c_g_e, c_g_h = _surface_sie_gram_coefficients_3d(
+        (c_ze_ext, c_ze_int, c_zh_ext, c_zh_int))
     Gram = (c_g_e != 0 || c_g_h != 0) ?
         _ncross_gram_3d(
             mesh, rwg;

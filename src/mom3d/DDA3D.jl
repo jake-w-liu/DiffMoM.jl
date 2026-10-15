@@ -440,12 +440,14 @@ end
         field::SVector{N,ComplexF64},
         divisor::Float64,
         label::AbstractString,
-        voxel::Int) where {N}
-    value = setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        voxel::Int,::Val{convolution}=Val(false)) where {N,convolution}
+    bits=convolution ? _DDA_SCALED_OUTPUT_FALLBACK_PRECISION : _POLARIZABILITY_FALLBACK_PRECISION
+    value = setprecision(BigFloat,bits) do
         alpha_big = Complex{BigFloat}(alpha)
         divisor_big = BigFloat(divisor)
-        SVector{N,ComplexF64}(ntuple(index -> ComplexF64(
-            alpha_big * Complex{BigFloat}(field[index]) / divisor_big), N))
+        SVector{N,ComplexF64}(ntuple(index -> _scaled_alpha_component_3d(
+            alpha_big * Complex{BigFloat}(field[index]) / divisor_big,
+            label,voxel,Val(convolution)), N))
     end
     all(isfinite, value) ||
         throw(OverflowError(
@@ -458,8 +460,9 @@ end
         field::SVector{N,ComplexF64},
         divisor::Float64,
         label::AbstractString,
-        voxel::Int) where {N,L}
-    value = setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        voxel::Int,::Val{convolution}=Val(false)) where {N,L,convolution}
+    bits=convolution ? _DDA_SCALED_OUTPUT_FALLBACK_PRECISION : _POLARIZABILITY_FALLBACK_PRECISION
+    value = setprecision(BigFloat,bits) do
         divisor_big = BigFloat(divisor)
         entries = ntuple(row -> begin
             accumulator = zero(Complex{BigFloat})
@@ -467,7 +470,7 @@ end
                 accumulator += Complex{BigFloat}(alpha[row, column]) *
                                Complex{BigFloat}(field[column])
             end
-            ComplexF64(accumulator / divisor_big)
+            _scaled_alpha_component_3d(accumulator/divisor_big,label,voxel,Val(convolution))
         end, N)
         SVector{N,ComplexF64}(entries)
     end
@@ -477,12 +480,24 @@ end
     return value
 end
 
+@inline function _scaled_alpha_component_3d(value,label,voxel,::Val{convolution}) where {convolution}
+    # A retained Fourier kernel can amplify a lost scaled source component.
+    # In that case the direct operator keeps the complete interaction coupled.
+    if convolution
+        for part in (real(value),imag(value))
+            !iszero(part) && abs(Float64(part))<floatmin(Float64) &&
+                throw(OverflowError("$label requires a coupled direct interaction at voxel $voxel"))
+        end
+    end
+    return ComplexF64(value)
+end
+
 @inline function _scaled_alpha_apply_3d(
         alpha::Number,
         field::SVector{N,ComplexF64},
         divisor::Float64,
         label::AbstractString,
-        voxel::Int) where {N}
+        voxel::Int,::Val{convolution}=Val(false)) where {N,convolution}
     alpha_value = ComplexF64(alpha)
     scaled_alpha = alpha_value / divisor
     scale_lost = !iszero(alpha_value) && iszero(scaled_alpha)
@@ -493,7 +508,7 @@ end
         return value
     end
     return _scaled_alpha_apply_bigfloat_3d(
-        alpha_value, field, divisor, label, voxel)
+        alpha_value, field, divisor, label, voxel,Val(convolution))
 end
 
 @inline function _scaled_alpha_apply_3d(
@@ -501,7 +516,7 @@ end
         field::SVector{N,ComplexF64},
         divisor::Float64,
         label::AbstractString,
-        voxel::Int) where {N,L}
+        voxel::Int,::Val{convolution}=Val(false)) where {N,L,convolution}
     scaled_alpha = alpha / divisor
     scale_lost = false
     @inbounds for index in eachindex(alpha)
@@ -517,7 +532,7 @@ end
         return value
     end
     return _scaled_alpha_apply_bigfloat_3d(
-        alpha, field, divisor, label, voxel)
+        alpha, field, divisor, label, voxel,Val(convolution))
 end
 
 function _clausius_mossotti_bigfloat(
@@ -2469,15 +2484,22 @@ result or observation validation.
 @noinline function _scattered_field_sum_bigfloat_dda_3d(
         res::DDAResult3D,
         observation::Vec3)
-    return setprecision(
-            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
-        total = zero(SVector{3,Complex{BigFloat}})
+    bits=_DDA_ACCUMULATION_FALLBACK_PRECISION
+    for center in res.grid.centers
+        bits=max(bits,_source_radial_phase_precision(res.k0,observation,center))
+    end
+    return setprecision(BigFloat,bits) do
+        total = zeros(Complex{BigFloat},3)
+        budget=_MultiSourceExactBudget(_multi_exact_accumulator_bytes(3),_default_max_dense_payload_bytes())
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
             dipole = _alpha_apply_bigfloat_vector_3d(
                 res.alpha[j], res.E_total[j])
-            total += _electric_dipole_value_bigfloat_3d(
+            contribution = _electric_dipole_value_bigfloat_3d(
                 observation, res.grid.centers[j], res.k0, dipole)
+            for component in 1:3
+                _source_exact_add_product!(total,component,budget,contribution[component])
+            end
         end
         converted = CVec3(
             ComplexF64(total[1]),
@@ -2495,6 +2517,7 @@ function _scattered_field_sum_dda_3d(
         res::DDAResult3D,
         observation::Vec3)
     total = zero(CVec3)
+    real_magnitude,imag_magnitude=zero(Vec3),zero(Vec3)
     try
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
@@ -2506,11 +2529,15 @@ function _scattered_field_sum_dda_3d(
                 return _scattered_field_sum_bigfloat_dda_3d(
                     res, observation)
             total = next_total
+            real_magnitude,imag_magnitude=_dda_add_accumulation_magnitudes(
+                real_magnitude,imag_magnitude,contribution)
         end
     catch err
         err isa OverflowError || rethrow()
         return _scattered_field_sum_bigfloat_dda_3d(res, observation)
     end
+    _dda_accumulation_requires_exact(total,real_magnitude,imag_magnitude,res.grid.nvoxels) &&
+        return _scattered_field_sum_bigfloat_dda_3d(res,observation)
     return total
 end
 
@@ -2658,7 +2685,8 @@ end
         direction_norm_squared = sum(abs2, direction)
         direction_norm = sqrt(direction_norm_squared)
         prefactor = BigFloat(res.k0)^2 / (4 * BigFloat(pi))
-        total = zero(SVector{3,Complex{BigFloat}})
+        total = zeros(Complex{BigFloat},3)
+        budget=_MultiSourceExactBudget(_multi_exact_accumulator_bytes(3),_default_max_dense_payload_bytes())
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
             q = _alpha_apply_bigfloat_vector_3d(
@@ -2669,8 +2697,10 @@ end
                 direction[index] *
                 BigFloat(res.grid.centers[j][index])
                 for index in 1:3) / direction_norm
-            total += exp(Complex{BigFloat}(0, phase_argument)) *
-                     prefactor * projected
+            phase=exp(Complex{BigFloat}(0,phase_argument))
+            for component in 1:3
+                _source_exact_add_product!(total,component,budget,phase,prefactor,projected[component])
+            end
         end
         converted = CVec3(
             ComplexF64(total[1]),
@@ -2696,6 +2726,7 @@ function _farfield_sum_dda_3d(
         supplied_direction)
     projection_norm_squared = sum(abs2, projection_direction)
     total = zero(CVec3)
+    real_magnitude,imag_magnitude=zero(Vec3),zero(Vec3)
     try
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
@@ -2709,12 +2740,16 @@ function _farfield_sum_dda_3d(
                 return _farfield_sum_bigfloat_dda_3d(
                     res, supplied_direction)
             total = next_total
+            real_magnitude,imag_magnitude=_dda_add_accumulation_magnitudes(
+                real_magnitude,imag_magnitude,contribution)
         end
     catch err
         err isa OverflowError || rethrow()
         return _farfield_sum_bigfloat_dda_3d(
             res, supplied_direction)
     end
+    _dda_accumulation_requires_exact(total,real_magnitude,imag_magnitude,res.grid.nvoxels) &&
+        return _farfield_sum_bigfloat_dda_3d(res,supplied_direction)
     return total
 end
 

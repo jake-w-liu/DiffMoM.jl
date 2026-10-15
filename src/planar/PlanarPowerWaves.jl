@@ -46,7 +46,22 @@ _planar_power_product_precision(n::Integer)=_planar_terminal_product_precision(n
 
 function _planar_accepted_power(v,i;max_bytes,retained_bytes)
     power=.5real(dot(v,i))
-    isfinite(power) && return power
+    magnitude=0.0;has_real_product=false
+    for p in eachindex(v,i)
+        for component in (real,imag)
+            left,right=component(v[p]),component(i[p])
+            has_real_product |= !iszero(left) && !iszero(right)
+            magnitude+=abs(left*right)
+        end
+    end
+    # Real and imaginary coordinates contribute two real products per port.
+    # A finite BLAS dot can still lose the entire net accepted power when
+    # entering and leaving powers nearly cancel. Exact reactive/zero drives
+    # with no real-coordinate products need no wider workspace.
+    has_real_product || return 0.0
+    bound=_ieee_product_error_factor(Float64,2,length(v))*magnitude
+    isfinite(power) && isfinite(bound) && abs(power)>=floatmin(Float64) &&
+        magnitude>=floatmin(Float64) && abs(power)>bound && return power
     bits=_planar_power_product_precision(length(v))
     # Exactly four owned scalar roles: accumulator, two operands, product.
     _enforce_payload_limit(_checked_payload_sum("accepted power recovery",retained_bytes,

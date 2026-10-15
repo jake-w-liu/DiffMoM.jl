@@ -29,8 +29,7 @@ function PlanarSubdivision(circuit::PlanarCircuit,parts::AbstractVector{PlanarPr
     end
     shifts = Tuple{Float64,Float64}[(Float64(x),Float64(y)) for (x,y) in origins]
     all(p -> all(isfinite,p),shifts) || throw(ArgumentError("part origins must be finite"))
-    template = PlanarCircuit(circuit.nnodes,copy(circuit.ports),
-        _planar_store_references(circuit.z0,length(circuit.ports)),copy(circuit.elements))
+    template = _circuit_copy(circuit)
     return PlanarSubdivision(template,collect(parts),maps,shifts)
 end
 
@@ -77,9 +76,9 @@ function _subdivision_retained_payload(value,seen=Base.IdSet{Any}())
             _subdivision_retained_payload(value.rowval,seen),
             _subdivision_retained_payload(value.nzval,seen))
     elseif value isa Union{PlanarResult,PlanarUFFTResult,PlanarCalibratedResult,
-            PlanarContractedResult,PlanarSourceResult,
+            PlanarContractedResult,PlanarSourceResult,PlanarCircuitResult,
             PlanarUFFTOperator,PlanarModeGrid,_PlanarUFFTFamily,_PlanarUFFTFoldedWorkspace,LinearAlgebra.LU,
-            PlanarBasisSet,SheetLevel,ViaLevel,VolLevel}
+            PlanarBasisSet,SheetLevel,ViaLevel,VolLevel,BrickLevel}
         return _subdivision_retained_fields(value,seen)
     elseif value isa AbstractArray
         value in seen && return 0
@@ -118,9 +117,7 @@ function solve_planar_subdivision(plan::PlanarSubdivision,f::Real;
         (_checked_array_payload_bytes(ComplexF64,length(part.ports)^2+length(part.ports))
             for part in plan.parts)...)
     _enforce_payload_limit(network_payload,max_bytes,"subdivision responses","max_bytes")
-    circuit = PlanarCircuit(plan.circuit.nnodes,copy(plan.circuit.ports),
-        _planar_store_references(plan.circuit.z0,length(plan.circuit.ports)),
-        copy(plan.circuit.elements))
+    circuit = _circuit_copy(plan.circuit)
     retained = retain_results ? Any[] : nothing
     retained_payload = 0
     for k in 1:n
@@ -288,7 +285,8 @@ function planar_subdivide(prob::PlanarProblem,axis::Symbol,edge::Integer;z0=50.0
         end
         vias = [ViaLevel(v.layer,slice(v.uni),slice(v.tap)) for v in prob.vias]
         vols = VolLevel[sliced_level(v,true) for v in prob.vols]
-        push!(parts,build_planar_problem(stack,grid,sheets,ports[side];vias=vias,vols=vols))
+        bricks = [BrickLevel(v.layer,slice(v.mask),v.epsr) for v in prob.bricks]
+        push!(parts,build_planar_problem(stack,grid,sheets,ports[side];vias,vols,bricks))
     end
     circuit = PlanarCircuit(length(prob.ports)+length(spans),collect(eachindex(prob.ports));
         z0=[p.z0 for p in prob.ports])

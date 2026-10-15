@@ -1,0 +1,70 @@
+schema_version = 1
+owner = "root"
+audit_date = "2026-10-15"
+status = "fresh bodies complete across root and independent reviewer; final CI/full validation pending"
+whole_surface_complete = false
+whole_repository_bug_free_claim = false
+global_optimization_claim = false
+
+[[surface]]
+files = ["src/mom3d/Types3D.jl", "src/mom3d/MaterialModels3D.jl", "src/mom3d/Adjoint3D.jl", "src/mom3d/FFTDDA3D.jl"]
+body_review = "Complete fresh body reads of all five root-owned files, including DDA3D.jl; EMDDA3D.jl and SurfaceIE3D.jl independently read by physics reviewer."
+domain = "Traced Cartesian center/volume consistency, exp(+iwt) passive loss, exact small-matrix PSD Schur pivots, Drude/Lorentz/Debye frequency units and resonance differences, normalized electric/magnetic fields, real-design adjoint factor two and Toeplitz self-exclusion."
+implementation = "Constructor compatibility, input/model coercion, finite results, scalar-gradient restriction, reused forward factors, public indexing, FFT alias copies, shared workspace locks and finally cleanup reviewed."
+resources = "Voxel raw storage/count limits, FFT persistent/scratch estimates, matrix-free fallback, stored model ownership, output limits, dense LU/exact fallback work, reused per-call MPFR scratch, alias copies and finally/unlock paths traced. Whole-field coherent retries use an adaptive dyadic accumulator with a retained-byte limit."
+performance = "Fresh expanded hotpath runner measures DDA 8/64 voxels and VIE/FFT paths. Wideband normal-path allocation regression is being checked; no global optimization claim."
+verification = "New material13 + original material78 checks passed. New FFT24 + original FFT92 checks passed. New coherent/Huygens18 checks, original DDA364, EM257 and adjoint30 passed; EM257 and FFT92 repeated after final EM boundary fix. Peak for the mixed DDA/EM/adjoint process 1984925696 bytes, final EM/FFT process 1788088320 bytes; these include compiler state. Four-thread SIE and 480-RWG integration independently passed. Complete reference validation on pushed source pending."
+
+[[finding]]
+candidate = "Wideband Debye forms omega before multiplying by a reciprocal-scale relaxation time."
+dimension = "domain and implementation"
+verification = "Public f=1e308 Hz, tau=1e-308 s, eps_inf=delta=1 returned 1+0i; independent 4096-bit reference is 1.0247045230318577-0.15522309613464763i, for passive=true and false."
+status = "fixed; new13 and existing78 checks passed"
+fix = "Cold whole-pole wide accumulation on extreme inputs, nonfinite intermediates or cancellation; validates all supplied poles and finite final conversion. Ordinary validation avoids constructing dynamic error labels."
+reverify = "test_wideband_debye_range.jl and original test_material_models3d.jl; TEMP/diffmom-reset-wideband-before.log and -crc.log"
+
+[[finding]]
+candidate = "A scaled FFT source moment can underflow before multiplication by a large retained kernel."
+dimension = "domain and numerical range"
+status = "fixed; new24 and existing92 checks passed"
+verification = "Two unit voxels, k=1e150, eps=nextfloat(1), source field1e-308: stored FFT moment became zero and lost a 1.77e-25 interaction. Independently indexed dense and direct products agree on the nonzero value."
+fix = "Convolution callers request a checked wide moment conversion; nonzero subnormal/unrepresentable components request a coupled direct interaction. Scalar/tensor and electric/magnetic routes share the check."
+reverify = "test_fft_dda_scaled_source_range.jl covers scalar/tensor, DDA/EM, aliased input/output, scaled alpha/beta products and subsequent lock reuse. Original test_mom3d_fft.jl retains transform/convolution overflow-path checks."
+
+[[finding]]
+candidate = "DDA and EM field-output sums accept finite cancellation after rounding individual contributions."
+dimension = "domain and implementation"
+status = "fixed; new18 and adjacent original suites passed"
+verification = "Three symmetric voxels with z fields[1e16,3,-1e16]: exact far component .15713055303311474+.08584081235252235i returned .1875+.0625i; exact near component -.15066480003815463-.09674075558572155i returned -.15625-.09375i in both DDA and EM. One-voxel public Huygens solve returned zero for exact finite electric .006480423207210113 and magnetic1.7201756726487096e-5 components."
+fix = "Ordinary sums carry fixed-size magnitude certificates; exceptional whole fields accumulate original wide contributions adaptively. Electric/magnetic pair contractions detect cancellation before phase/scaling. Wide EM leaf results remain wide until the final sum."
+reverify = "test_dda_output_cancellation.jl checks independent symmetric analytic Green/far-field expressions, complex source phases, electric/magnetic duality and a full one-cell Huygens solve. TEMP/diffmom-reset-dda-output-crc.log and diffmom-reset-emdda-output-final-crc.log."
+
+[[benchmark]]
+name = "ordinary field sum safeguards,64voxels"
+dda_near_baseline_seconds = 4.115e-6
+dda_near_current_seconds = 4.746e-6
+dda_far_baseline_seconds = 3.021e-6
+dda_far_current_seconds = 3.554e-6
+em_near_baseline_seconds = 1.3248e-5
+em_near_current_seconds = 1.5592e-5
+em_far_baseline_seconds = 6.487e-6
+em_far_current_seconds = 8.677e-6
+baseline_allocated_bytes = 0
+current_allocated_bytes = 0
+protocol = "Warmed same-process old sum bodies under private constant-bound names; one Julia/BLAS thread, minimum5 blocks of100 calls and10 allocation samples. EM old/new sum bodies share the corrected current pair kernel, so this isolates sum guards rather than claiming the full EM patch overhead. New correctness safeguards trade some scalar runtime for finite-cancellation detection."
+
+[[benchmark]]
+name = "wideband Debye, warmed normal60poles"
+baseline_seconds = 7.9183e-6
+current_seconds = 7.6911e-7
+baseline_allocated_bytes = 11520
+current_allocated_bytes = 0
+protocol = "one Julia/BLAS thread, minimum5 blocks of10000 calls, minimum10 allocation samples; old function body evaluated under a private name in the same process"
+
+[[benchmark]]
+name = "wideband Debye, warmed normal3poles"
+baseline_seconds = 3.2311e-7
+current_seconds = 4.452e-8
+baseline_allocated_bytes = 576
+current_allocated_bytes = 0
+protocol = "same-process protocol above; ordinary dynamic error-label allocation removed; cold fallback retains bounded precision"

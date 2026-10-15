@@ -183,7 +183,8 @@ function solve_planar_project(project::PlanarProject,freq::Real;grid=nothing,
     workspace=_checked_array_payload_bytes(ComplexF64,24,n,n)
     _enforce_payload_limit(owned+workspace,max_bytes,"planar project solve","max_bytes")
     # Validate/evaluate every load before starting an expensive EM solve.
-    circuit=isempty(model.components) ? nothing :
+    independent=isempty(model.components) && !_project_has_node_constraints(model)
+    circuit=independent ? nothing :
         _project_circuit(model,freq,component_response,max_bytes-owned-workspace)
     circuit_owned=circuit===nothing ? 0 : _checked_payload_sum("project circuit storage",
         _circuit_owned_model_payload(circuit),_spice_circuit_payload(circuit))

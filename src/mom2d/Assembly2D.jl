@@ -298,6 +298,11 @@ function assemble_vie_2d(
     small_self = ka <= _SELF_CELL_SERIES_CUTOFF_2D
     self_kernel = if small_self
         _small_self_cell_normalized_2d(k0, a_eq, ka)
+    elseif !isfinite(ka) || ka > _GREENS_EXACT_PHASE_THRESHOLD_2D
+        # Form k² times the self integral before narrowing. Recovering it
+        # from a rounded/underflowed D_self or a rounded large k*a loses the
+        # finite interaction magnitude or the supplied physical phase.
+        _self_cell_integral_large_exact_2d(k0, a_eq, true)
     else
         H1 = besselh(1, 2, ka)
         isfinite(H1) ||

@@ -606,6 +606,11 @@ function _spice_circuit_payload(circuit)
         2048,_checked_array_payload_bytes(Int,4,circuit.nnodes),
         _checked_array_payload_bytes(ComplexF64,4,length(circuit.ports)),
         _checked_array_payload_bytes(UInt8,1280,length(circuit.elements)))
+    if circuit.spice_instances!==nothing
+        payload=_checked_payload_sum("SPICE instance provenance",payload,
+            _checked_array_payload_bytes(UInt8,512,length(circuit.spice_instances)),
+            2sum(ncodeunits,keys(circuit.spice_instances);init=0))
+    end
     for e in circuit.elements
         if e isa _CircuitNetwork && e.response isa AbstractMatrix
             payload=_checked_payload_sum("SPICE circuit attachment",payload,
@@ -618,8 +623,10 @@ end
 """Attach a compiled linear SPICE subcircuit to ordered external node numbers.
 The order is its literal `.subckt` pin order. Internal nodes are appended,
 while literal `0`/`gnd` retains global ground. `name` is case insensitive and
-must be unique among SPICE instances. Source cards, numeric parameters and
-file SHA256 remain accessible through each primitive's shared model.
+must be unique among SPICE instances. `circuit.spice_instances` retains
+every attached compiled model by instance name, including W/nport,
+transformer-only and empty definitions. Source cards, numeric parameters
+and file SHA256 remain accessible through those shared models.
 
 Attachment preflights owned model, mapping and element storage before any
 circuit mutation. Node aliases declared during compilation must agree with
@@ -636,7 +643,8 @@ function circuit_add_spice!(circuit::PlanarCircuit,pin_nodes::AbstractVector,
         model::PlanarSpiceModel;name="spice$(length(circuit.elements)+1)",
         max_bytes::Integer=_default_max_dense_payload_bytes())
     instance=_spice_identifier(name)
-    any(e->e isa Union{_CircuitSpicePrimitive,_CircuitSpiceLine} && e.owner.instance==instance,circuit.elements) &&
+    ((circuit.spice_instances!==nothing && haskey(circuit.spice_instances,instance)) ||
+        any(e->e isa Union{_CircuitSpicePrimitive,_CircuitSpiceLine} && e.owner.instance==instance,circuit.elements)) &&
         throw(ArgumentError("duplicate case-insensitive SPICE instance name"))
     definition=model.library.definitions[model.subckt]
     length(pin_nodes)==length(definition.pins) || throw(ArgumentError("SPICE attachment pin count mismatch"))
@@ -644,8 +652,12 @@ function circuit_add_spice!(circuit::PlanarCircuit,pin_nodes::AbstractVector,
         throw(ArgumentError("SPICE external nodes must be in 0:$(circuit.nnodes)"))
     nodecount=length(model.nodes)
     retained=_circuit_owned_model_payload(circuit)
-    any(e->_circuit_owned_model(e)===model,circuit.elements) || (retained=_checked_payload_sum("SPICE attachment",retained,model.payload))
+    shared=(circuit.spice_instances!==nothing && any(m->m===model,values(circuit.spice_instances))) ||
+        any(e->_circuit_owned_model(e)===model,circuit.elements)
+    shared || (retained=_checked_payload_sum("SPICE attachment",retained,model.payload))
     needed=_checked_payload_sum("SPICE attachment",retained,_spice_circuit_payload(circuit),
+        _checked_array_payload_bytes(UInt8,512,1+(circuit.spice_instances===nothing ? 0 : length(circuit.spice_instances))),
+        2ncodeunits(instance),
         _checked_array_payload_bytes(UInt8,1280,length(model.elements)),
         _checked_array_payload_bytes(UInt8,128,sum(length(v) for v in values(model.inductive_rows);init=0)),
         _checked_array_payload_bytes(Int,6,nodecount+length(pin_nodes)+1))
@@ -716,9 +728,11 @@ function circuit_add_spice!(circuit::PlanarCircuit,pin_nodes::AbstractVector,
         links=row===nothing ? Tuple{Int,Float64}[] : [(target+offset,value) for (target,value) in row]
         push!(added,_CircuitSpicePrimitive(terminals,e.kind,e.value,control,controller,e,owner,scale,links))
     end
-    # Allocate the replacement collection before committing either field.
+    # Allocate both replacement collections before committing circuit state.
     combined=vcat(circuit.elements,added)
-    circuit.nnodes=nextnode;circuit.elements=combined
+    instances=circuit.spice_instances===nothing ? Dict{String,Any}() : copy(circuit.spice_instances)
+    instances[instance]=model
+    circuit.nnodes=nextnode;circuit.elements=combined;circuit.spice_instances=instances
     circuit
 end
 

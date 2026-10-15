@@ -247,7 +247,8 @@ end
 function _odb_code39_encode(text,full_ascii)
     out=IOBuffer()
     for char in text
-        if haskey(_ODB_CODE39_PATTERNS,char) && char!='*'
+        if haskey(_ODB_CODE39_PATTERNS,char) && char!='*' &&
+                (!full_ascii || !(char in ('$', '%', '+', '/')))
             print(out,char);continue
         end
         full_ascii || throw(ArgumentError("ODB barcode character $(repr(char)) requires full ASCII"))

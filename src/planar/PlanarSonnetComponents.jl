@@ -135,15 +135,14 @@ function _sonnet_ground_network(response,format::Symbol,grounded::AbstractVector
     throw(ArgumentError("unsupported component response format $format"))
 end
 
-function _sonnet_component_base_payload(base)
-    seen=Base.IdSet{Any}()
+function _sonnet_component_base_payload(base,seen=Base.IdSet{Any}())
     values=(base.problem.basis,base.problem.sheets,base.problem.vias,base.problem.vols,
-        base.problem.stack.layers,base.sheet_zs,base.via_sigma,base.contraction,
+        base.problem.bricks,base.problem.stack.layers,base.sheet_zs,base.via_sigma,base.contraction,
         base.floating_common,base.z0,base.labels)
     _checked_payload_sum("native live base geometry",4096,
         _checked_array_payload_bytes(UInt8,256,length(base.problem.ports)),
         _checked_array_payload_bytes(UInt8,128,length(base.problem.sheets)+length(base.problem.vias)+
-            length(base.problem.vols)+length(base.problem.stack.layers)),
+            length(base.problem.vols)+length(base.problem.bricks)+length(base.problem.stack.layers)),
         (_subdivision_retained_payload(value,seen) for value in values)...)
 end
 
@@ -165,7 +164,7 @@ end
 function _sonnet_component_retained_payload(model)
     seen=Base.IdSet{Any}()
     values=(model.problem.basis,model.problem.sheets,model.problem.vias,model.problem.vols,
-        model.problem.stack.layers,model.sheet_zs,model.via_sigma,model.contraction,
+        model.problem.bricks,model.problem.stack.layers,model.sheet_zs,model.via_sigma,model.contraction,
         model.floating_common,model.z0,model.labels,model.external_labels)
     npins=sum(length,model.pins)
     _checked_payload_sum("native retained component model",4096,
@@ -175,7 +174,7 @@ function _sonnet_component_retained_payload(model)
         _spice_circuit_payload(model.circuit),
         _checked_array_payload_bytes(UInt8,256,length(model.problem.ports)+npins+length(model.reference_paths)),
         _checked_array_payload_bytes(UInt8,128,length(model.problem.sheets)+length(model.problem.vias)+
-            length(model.problem.vols)+length(model.problem.stack.layers)),
+            length(model.problem.vols)+length(model.problem.bricks)+length(model.problem.stack.layers)),
         (_subdivision_retained_payload(value,seen) for value in values)...,
         (_subdivision_retained_payload(path.cells,seen) for path in model.reference_paths)...)
 end

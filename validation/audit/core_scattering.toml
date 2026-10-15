@@ -1,0 +1,496 @@
+schema_version = 1
+owner = "core_scattering"
+audit = "Fresh reset requested2026-10-15; prior results are context only"
+base_revision = "dd2f0eb4df088a25b95e7ee2b97fe52454d1fcc6"
+status = "active; broad source review and full validation pending"
+owned_source_count = 55
+owned_source_lines_at_reset = 43590
+additional_planar_lines_at_review = 2769
+export_occurrences = 278
+entrypoint_test_map = "TEMP/diffmom_fresh_core_dd2f0eb4/entrypoints.json"
+full_validation_pass = false
+julia_launch_state = "all source/support fixes frozen after final165+78+19+13 CRC; no Julia jobs; source review continues"
+not_claimed = ["whole-repository numerical proof", "absolute optimization", "complete current-run source coverage"]
+
+[ownership]
+root = ["src/fast", "src/postprocessing", "validation/pn3d", "test infrastructure", "CI/dependencies"]
+confirmed_fix_files = ["src/error_estimation/Conditioning.jl", "test/test_quadratic_output_mean_cancellation.jl"]
+requested_comment = "test/full_core.jl:correct original sphere subdivision2 count to480RWGs"
+
+[[areas]]
+id = "types_workflow"
+description = "Core types and workflow"
+files = ["src/Types.jl", "src/Workflow.jl"]
+domain = "Delegated to planar_physics_audit after this agent traced public workflow validation/solve/state contracts; no standalone fresh workflow fixture run by this agent."
+implementation = "Partial reads: Types first469 lines; Workflow entry validation and final solve/state branches. Remaining body review is physics-owned."
+resources = "Fingerprint, owned payload limit and retained-state transaction paths traced; full mutation/concurrency/budget verification delegated."
+performance = "No representative warmed Workflow/Types benchmark in this agent; exact480RWG end-to-end evidence includes solve/state consumers but does not isolate overhead."
+
+[[areas]]
+id = "geometry_basis"
+description = "Geometry, RWG and quadrature"
+files = ["src/basis/Greens.jl", "src/basis/NestedRWG.jl", "src/basis/PeriodicGreens.jl", "src/basis/Quadrature.jl", "src/basis/RWG.jl", "src/geometry/Mesh.jl", "src/geometry/MeshIO.jl"]
+domain = "Fresh complete formulas read in Greens, Quadrature and NestedRWG. Current exact480RWG Test36 and SIE158 plus source Tests14-16 exercise meshes/RWG/quadrature. Independent mesh-repair/coarsening, periodic Green and topology checks remain unrun this reset."
+implementation = "Complete bodies: Greens, Quadrature, NestedRWG. Partial bodies: RWG first190, Mesh first170, MeshIO CAD tail/function inventory. PeriodicGreens body unread."
+resources = "Nested injection dense-QR payload bound and quadrature finite mapping traced. Mesh parser/repair/coarsening resource lifetimes and periodic boundary budgets still require fresh review."
+performance = "Zero-allocation ordinary dipole consumers and warmed21RWG RHS measured; no isolated warmed geometry/Green/RWG benchmark yet."
+
+[[areas]]
+id = "assembly"
+description = "EFIE, sources, impedance, periodic and grounded assembly"
+files = ["src/assembly/CompositeOperator.jl", "src/assembly/DensityInterpolation.jl", "src/assembly/EFIE.jl", "src/assembly/Excitation.jl", "src/assembly/GroundedEFIE.jl", "src/assembly/Impedance.jl", "src/assembly/PeriodicEFIE.jl", "src/assembly/SingularIntegrals.jl", "src/assembly/SpatialPatches.jl"]
+domain = "Coherent source linearity/range fixed across five analytical families plus imported reactions and voltage sources:78 new checks and165 original source checks. Complete EFIE self/adjacent/distant singularity-subtraction and impedance/SIMP formulas freshly traced. Exact480RWG sphere and SIE158 exercise EFIE. Periodic/grounded derivations and independent singular-integral references remain incomplete."
+implementation = "Excitation coherent field/RHS, callback, cache and nested paths read in depth; some phase/grid/construction helpers remain partial. SpatialPatches exact-distance/boundary helpers and Grounded image kernel read partially. Complete new reads: CompositeOperator448, DensityInterpolation385, Impedance512, EFIE1139 lines. PeriodicEFIE/SingularIntegrals still unread; EFIE symmetry/Bloch/cache/row-exact/alias paths traced."
+resources = "New exact source budget rejection, callback-error count and streamed single-accumulator behavior tested; source normal allocations unchanged. EFIE adjacency/cache preflight, work ownership and xy-overlap traced; no shared mutable EFIE matvec scratch. Composite borrowed dense/local/sparse matrix mutation must invalidate any range metadata; confirmed joint underflow pending conservative guard. Full periodic/grounded budget runtime matrix not yet verified."
+performance = "Warmed ordinary two-child far/point fields and cached21RWG RHS compared with dd2:608/288/3760 bytes unchanged; imported cached21 RHS2128 bytes unchanged. Normal Composite guard-only prototype at21/176RWGs adds0 bytes and0.3764/21.0363 microseconds to1.5092/64.1255 microsecond baseline matvec; correctness/performance tradeoff recorded, no adopted fix yet. No warmed EFIE/grounded/periodic assembly measurements yet."
+
+[[areas]]
+id = "solver"
+description = "Direct, iterative, preconditioning and retained solves"
+files = ["src/solver/IterativeSolve.jl", "src/solver/NearFieldPreconditioner.jl", "src/solver/RetainedSolve.jl", "src/solver/Solve.jl"]
+domain = "Physics agent now owns full fresh solver review. This agent exact480RWG Test36 passed actual480 unknowns with original optimization/rebuild/true-residual assertions; SIE158 includes threaded shared-operator applications."
+implementation = "RetainedSolve complete body read; Solve first220 plus error-factor helpers, Iterative scaling/recovery and NearField first165 read partially. Broader solver body review delegated."
+resources = "Retained solve signature/lock/transaction work model traced; exact480RWG peak539344896 bytes and threadedSIE peak1080782848 bytes recorded. Full factor/preconditioner mutation and backend lifetime review delegated."
+performance = "480RWG end-to-end29.9828403s including17.7386937s reported compile; no isolated warmed iterative/direct backend measurements from this agent this reset."
+
+[[areas]]
+id = "optimization"
+description = "Objectives, adjoints, density, bounded optimizers and verification"
+files = ["src/optimization/Adjoint.jl", "src/optimization/DensityAdjoint.jl", "src/optimization/DensityFiltering.jl", "src/optimization/MultiAngleRCS.jl", "src/optimization/Optimize.jl", "src/optimization/QMatrix.jl", "src/optimization/Verification.jl"]
+domain = "Density gradient/SIMP complex sign and gradient-verification spacing formulas freshly derived; exact original480RWG sphere optimization36a-e passed. Ratio quotient-rule and normalized sum-log/smoothmax derivatives traced from current complete optimizer bodies, projected Armijo/accepted trace behavior reviewed. Fresh reset independent optimizer scalar and line-search runtime cases still pending."
+implementation = "Complete bodies: DensityAdjoint, Verification. Partial: Adjoint first170, DensityFiltering first110, QMatrix first135. Complete new reads: MultiAngleRCS1324 and Optimize1891 lines, including validation, exact/direct/GMRES routes, accepted/trial factors, preconditioner reuse modes, final trace and line-search rollback."
+resources = "Density guarded derivative/exact bilinear precision and bounded complex-step retries traced. Optimizer normal/exact dense-payload estimates, L-BFGS history peak, trial/accepted factor overlap, exact fallback callbacks, and GMRES residual gates freshly traced. Q operator locking/alias scratch remains incomplete. Multi-angle weighted-gradient child narrowing candidate remains unverified."
+performance = "No fresh representative warmed gradient/Q/line-search benchmark; exact sphere elapsed/peak is a bounded end-to-end measurement with compile cost, not a warmed kernel result."
+
+[[areas]]
+id = "volume_2d"
+description = "2D TM volume kernels, material contrasts and Jacobians"
+files = ["src/mom2d/Assembly2D.jl", "src/mom2d/Excitation2D.jl", "src/mom2d/Greens2D.jl", "src/mom2d/Mie2D.jl", "src/mom2d/Scatter2D.jl", "src/mom2d/Types2D.jl"]
+domain = "Complete fresh public path reads: Types2D mesh/result invariants, Excitation2D phase/source model, Scatter2D field/Jacobian transpose identity. No fresh2D VIE/Mie runtime in this reset; older271 pass is not counted."
+implementation = "Complete bodies: Types2D, Excitation2D, Scatter2D. Assembly2D, Greens2D and Mie2D bodies unread; their entrypoints/tests mapped only."
+resources = "Mesh exact spacing, observation exclusion, output preflight and ordinary/exact rectangular Jacobian workspace traced. Factor lifetime, Mie recurrence/work and solve caps still pending fresh audit."
+performance = "No fresh warmed2D kernels; normal workload target pending for small/medium D assembly, solve and few-observation Jacobian."
+
+[[areas]]
+id = "material_3d"
+description = "3D material laws, DDA, electric-magnetic, FFT and surface equations"
+files = ["src/mom3d/Adjoint3D.jl", "src/mom3d/DDA3D.jl", "src/mom3d/EMDDA3D.jl", "src/mom3d/FFTDDA3D.jl", "src/mom3d/MaterialModels3D.jl", "src/mom3d/SurfaceIE3D.jl", "src/mom3d/Types3D.jl"]
+domain = "Exact original test_surface_ie3d.jl passed158 checks with4Julia/1BLAS threads, including four concurrent shared-operator rounds and120RWG/240unknown sphere. No fresh DDA/EMDDA/FFT/material/3D adjoint runtime in this reset."
+implementation = "Types3D first180 read partially. Full bodies of Adjoint3D, DDA3D, EMDDA3D, FFTDDA3D, MaterialModels3D and SurfaceIE3D unread this reset; root requested help for these8229 total area lines."
+resources = "Threaded SIE peak1080782848 bytes measured. Fresh per-backend budgets, tensor ownership/FFT-plan lifetime and output-factor mutation audit still pending."
+performance = "Threaded SIE18.3361507s/1733032994 cumulative bytes includes18.4382687 reported compilation; no fresh warmed3D normal-kernel benchmark."
+
+[[areas]]
+id = "probabilistic"
+description = "Galerkin restriction, proper-complex conditioning and calibration"
+files = ["src/error_estimation/Calibration.jl", "src/error_estimation/Conditioning.jl", "src/error_estimation/GalerkinError.jl"]
+domain = "Confirmed expected-mean cancellation fix has new18 plus variance27/conditioning80/calibration24911 fresh checks. Independent physics agent owns new confirmed variance SVD-compression issue and remaining full fresh review."
+implementation = "Quadratic mean/variance formula/helper paths read deeply; Galerkin prepare112-237 and Calibration scale/score/screen/context portions read; first conditioning and remaining Galerkin/calibration bodies partial/delegated."
+resources = "Exact-zero mean resource regression caught and corrected before commit; m128 p12/p24 allocations measured and bounded. Full conditioning Schur/calibration rank/model mutation and concurrency review delegated."
+performance = "Six warmed quadratic cases in ledger: new mean guard adds96-128 bytes on ordinary/zero-factor cases; zero-weight remains0 bytes. No absolute optimization claim. Physics-owned variance fallback changes require own new performance evidence."
+
+[fresh_read_status]
+"src/basis/Greens.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/basis/NestedRWG.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/basis/Quadrature.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/optimization/DensityAdjoint.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/optimization/Verification.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/mom2d/Types2D.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/mom2d/Excitation2D.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/mom2d/Scatter2D.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/solver/RetainedSolve.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarPowerWaves.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarPortContraction.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarSubdivision.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarFloatingBridge.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarTerminalReturns.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarGeometry.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarConformalLayout.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarAxialRefinement.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarOutputs.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/planar/PlanarPlots.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
+"src/Types.jl" = "first469 lines; delegated remainder"
+"src/Workflow.jl" = "entry validation1-216 and final solve/state379-end; delegated middle"
+"src/assembly/SpatialPatches.jl" = "exact means/distances/grid boundary helpers1-145,205-385; assignment remainder pending"
+"src/assembly/GroundedEFIE.jl" = "image-theory kernel/assembly opening partial; full grounded/farfield reflection paths pending"
+"src/assembly/Excitation.jl" = "deep coherent fields/RHS/cache/model-validation review and73checks; full phase and pattern construction helper review still partial"
+"src/geometry/Mesh.jl" = "bent-slotted panel generation and initial resource helpers first170; remainder unread"
+"src/geometry/MeshIO.jl" = "CAD tail1462-1540 and function inventory; actual parser bodies unread"
+"src/basis/RWG.jl" = "construction and periodic phase opening first190; remaining periodic pairing/evaluation unread"
+"src/optimization/Adjoint.jl" = "precision/bilinear opening first170; remaining body unread"
+"src/optimization/DensityFiltering.jl" = "conic-distance/bucket preflight first110; remaining body unread"
+"src/optimization/QMatrix.jl" = "types/factor/range/project opening first135; remaining body unread"
+"src/mom3d/Types3D.jl" = "first180 partial; complete model/validation body pending"
+"src/error_estimation/Calibration.jl" = "scale/score/screen/context portions; delegated remainder"
+"src/error_estimation/Conditioning.jl" = "quadratic mean/variance tail and selected conditioning paths; delegated remainder/new variancefix"
+"src/error_estimation/GalerkinError.jl" = "prepare_galerkin_error112-237; delegated remainder"
+"src/solver/NearFieldPreconditioner.jl" = "types/validation first165; delegated remainder"
+"src/solver/IterativeSolve.jl" = "lossless scaling/recovery100-236; delegated remainder"
+"src/solver/Solve.jl" = "validation/exact matrix product first220 plus error-factor helper; delegated remainder"
+"src/basis/PeriodicGreens.jl" = "body unread this reset; public exports and test references mapped only"
+"src/assembly/CompositeOperator.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
+"src/assembly/DensityInterpolation.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
+"src/assembly/EFIE.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
+"src/assembly/Impedance.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
+"src/assembly/PeriodicEFIE.jl" = "body unread this reset; public exports and test references mapped only"
+"src/assembly/SingularIntegrals.jl" = "body unread this reset; public exports and test references mapped only"
+"src/optimization/MultiAngleRCS.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
+"src/optimization/Optimize.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
+"src/mom2d/Assembly2D.jl" = "body unread this reset; public exports and test references mapped only"
+"src/mom2d/Greens2D.jl" = "body unread this reset; public exports and test references mapped only"
+"src/mom2d/Mie2D.jl" = "body unread this reset; public exports and test references mapped only"
+"src/mom3d/Adjoint3D.jl" = "body unread this reset; public exports and test references mapped only"
+"src/mom3d/DDA3D.jl" = "body unread this reset; public exports and test references mapped only"
+"src/mom3d/EMDDA3D.jl" = "body unread this reset; public exports and test references mapped only"
+"src/mom3d/FFTDDA3D.jl" = "body unread this reset; public exports and test references mapped only"
+"src/mom3d/MaterialModels3D.jl" = "body unread this reset; public exports and test references mapped only"
+"src/mom3d/SurfaceIE3D.jl" = "body unread this reset; public exports and test references mapped only"
+
+[[findings]]
+id = "quadratic_mean_cancellation"
+dimensions = ["domain", "implementation", "resources", "performance"]
+status = "confirmed; local fix and targeted CRC pass; root focused/full validation and commit pending"
+expectation = "Mean of y'Wy equals mu'Wmu+tr(WFF'), with final representable cancellation retained"
+reproduction = "mu=fill(1e150+0im,2); F=1e-150I; C=F*F'; W=[1 2^-60;2^-60 -1]"
+observed_before = "mean0,variance4"
+independent_reference = "6656/4352bit direct formula:mean1.734723475976807e282,variance4"
+additional_cases = ["trace-only cancellation across factor columns", "cancellation between mean and trace", "fourfold exact dyadic latent expansion"]
+fix = "Conservative expected-value cancellation certificate; one existing IEEE exact accumulator spans mu and original factor columns until final conversion; no SVD or rank-square mean workspace; proven exact-zero early path"
+regression = "test/test_quadratic_output_mean_cancellation.jl:18checks"
+logs = ["TEMP/diffmom_fresh_quadratic_mean_repro.log", "TEMP/diffmom_fresh_quadratic_mean_crc.log", "TEMP/diffmom_fresh_quadratic_mean_crc_bench.log"]
+crc = "new18 + previous mean/variance/zero27 + conditioned-error80 + calibration24911 pass; diffcheck clean"
+
+[[evidence]]
+id = "original_sphere36"
+status = "passed exact original36a-e logic and thresholds, no substituted geometry"
+source = "test/full_core.jl (extracted from original full_validation)"
+geometry = "Original radius0.05,subdivisions2:162vertices,320triangles,480RWGs;27patches;230396near nnz;288directions"
+checks = "all original @assert statements plus4explicit checks; three accepted optimization updates and two current-preconditioner updates"
+command = "OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=1 JULIA_NUM_PRECOMPILE_TASKS=1 julia --project=. --startup-file=no --heap-size-hint=400M TEMP/diffmom_fresh_original_sphere36_dd2f0eb4.jl"
+log = "TEMP/diffmom_fresh_original_sphere36_dd2f0eb4.log"
+seconds = 29.9828403
+reported_compile_seconds = 17.7386937
+julia_cumulative_allocated_bytes = 2265315495
+peak_rss_bytes = 539344896
+
+[[evidence]]
+id = "original_threaded_sie"
+status = "passed158original checks including shared-operator concurrent tasks"
+source = "test/test_surface_ie3d.jl"
+geometry = "tetrahedral systems and original120RWG/240unknown dielectric sphere; both PMCHWT/Muller and electric/magnetic materials"
+command = "OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=4 JULIA_NUM_PRECOMPILE_TASKS=1 julia --project=. --startup-file=no --heap-size-hint=350M -e include(original SIE file)"
+log = "TEMP/diffmom_fresh_sie_threaded_dd2f0eb4.log"
+seconds = 18.3361507
+reported_compile_seconds = 18.4382687
+julia_cumulative_allocated_bytes = 1733032994
+peak_rss_bytes = 1080782848
+
+[[evidence]]
+id = "quadratic_crc"
+status = "passed current reset; no live Julia job remains"
+command = "OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=1 JULIA_NUM_PRECOMPILE_TASKS=1 julia --project=. --startup-file=no --heap-size-hint=300M TEMP/diffmom_fresh_quadratic_mean_crc_bench.jl"
+checks = [18,27,80,24911]
+files = ["test_quadratic_output_mean_cancellation.jl", "test_quadratic_output_cancellation.jl", "test_conditioned_error.jl", "test_rcs_calibration.jl"]
+log = "TEMP/diffmom_fresh_quadratic_mean_crc_bench.log"
+peak_rss_bytes = 681533440
+
+[[benchmarks]]
+workload = "ordinary12"
+latent_columns = 128
+baseline_allocated_bytes = 5310
+current_allocated_bytes = 5438
+baseline_seconds = 1.682e-06
+current_seconds = 1.816e-06
+protocol = "warmed100call samples, minimum5timings/10allocation samples;1Julia/BLAS thread; noisy timings, not peak/native accounting"
+
+[[benchmarks]]
+workload = "ordinary24"
+latent_columns = 128
+baseline_allocated_bytes = 19566
+current_allocated_bytes = 19678
+baseline_seconds = 1.1366e-05
+current_seconds = 9.565e-06
+protocol = "warmed100call samples, minimum5timings/10allocation samples;1Julia/BLAS thread; noisy timings, not peak/native accounting"
+
+[[benchmarks]]
+workload = "zero_weight12"
+latent_columns = 128
+baseline_allocated_bytes = 0
+current_allocated_bytes = 0
+baseline_seconds = 6.16e-07
+current_seconds = 7.33e-07
+protocol = "warmed100call samples, minimum5timings/10allocation samples;1Julia/BLAS thread; noisy timings, not peak/native accounting"
+
+[[benchmarks]]
+workload = "zero_weight24"
+latent_columns = 128
+baseline_allocated_bytes = 0
+current_allocated_bytes = 0
+baseline_seconds = 1.594e-06
+current_seconds = 1.828e-06
+protocol = "warmed100call samples, minimum5timings/10allocation samples;1Julia/BLAS thread; noisy timings, not peak/native accounting"
+
+[[benchmarks]]
+workload = "zero_factor12"
+latent_columns = 128
+baseline_allocated_bytes = 5310
+current_allocated_bytes = 5406
+baseline_seconds = 3.136e-06
+current_seconds = 4.169e-06
+protocol = "warmed100call samples, minimum5timings/10allocation samples;1Julia/BLAS thread; noisy timings, not peak/native accounting"
+
+[[benchmarks]]
+workload = "zero_factor24"
+latent_columns = 128
+baseline_allocated_bytes = 19566
+current_allocated_bytes = 19678
+baseline_seconds = 9.149e-06
+current_seconds = 1.293e-05
+protocol = "warmed100call samples, minimum5timings/10allocation samples;1Julia/BLAS thread; noisy timings, not peak/native accounting"
+
+
+[[areas]]
+id = "planar_support"
+description = "Additional support body review assigned by root"
+files = ["src/planar/PlanarPowerWaves.jl", "src/planar/PlanarPortContraction.jl", "src/planar/PlanarSubdivision.jl", "src/planar/PlanarFloatingBridge.jl", "src/planar/PlanarTerminalReturns.jl", "src/planar/PlanarGeometry.jl", "src/planar/PlanarConformalLayout.jl", "src/planar/PlanarAxialRefinement.jl", "src/planar/PlanarOutputs.jl", "src/planar/PlanarPlots.jl"]
+domain = "All10 assigned bodies freshly read. Power-wave1/2 peak-phasor energy and real contraction power conjugacy traced. New acceptedpower13 and brick/provenance17 plus existing powerwave114 checks pass. Plot/output/conformal/axial independent runtime checks not yet performed this reset."
+implementation = "All10 bodies complete fresh reads. Bridge/subdivision brick loss fixed, coherent circuit cloning now uses IO-owned _circuit_copy; source and constructor metadata checks pass. Other constructor/error/alias branches reviewed statically, not exhaustively executed."
+resources = "Bridge geometry budget rejection and input mask independence tested; accepted-power recovery cap/zero fast path tested. Existing retained-payload recursion traced; broad support exact-cap/GC/native-plot resource checks remain unrun."
+performance = "Normal acceptedpower helper p1/p12 remains0 allocated bytes with7.34->12.32ns /22->80.43ns minimum timings, reflecting added linear cancellation screening. No warmed conformal/refinement/CSV/plot benchmark; source consumers measured separately."
+
+[[findings]]
+id = "coherent_weighted_source_range"
+dimension = "domain and implementation"
+status = "confirmed; fixed locally; final78weighted checks+19geometry checks and165 source Tests14-16 checks pass; adaptive exact dyadic accumulation added"
+verification = "accepted magnetic dipole1e308 withweight.01 throws beforeweight; equivalent moment1e306 gives finite2.9979245801050283e307 farfield; loop,monopole farfield,and pattern variants independently reproduced"
+fix = "cold analytical kernels retain wide fields through coherent weights/nesting; stream exact weighted surface reactions and voltage quotients into one retained accumulator"
+files = ["src/assembly/Excitation.jl", "src/postprocessing/FarField.jl", "test/test_weighted_source_range.jl"]
+logs = ["TEMP/diffmom_fresh_weighted_dipole_probe.log", "TEMP/diffmom_fresh_weighted_source_variants.log", "TEMP/diffmom_fresh_weighted_source_crc.log", "TEMP/diffmom_fresh_source_original14_16_crc.log"]
+initial_crc_checks = 69
+final_crc_checks = 78
+initial_crc_seconds = 8.0
+initial_crc_peak_rss_bytes = 434405376
+
+[[findings]]
+id = "floating_bridge_brick_loss"
+dimension = "domain, implementation and resources"
+status = "fixed locally; bridge and x/y subdivision preserve masks/materials,15checks pass"
+verification = "tiny8x6 portfree accepted PlanarProblem with one occupied dielectricbrick; bridge result silentlydropsbrick, violating preservedgeometry contract"
+logs = ["TEMP/diffmom_fresh_weighted_source_variants.log", "TEMP/diffmom_fresh_brick_geometry_probe.log", "TEMP/diffmom_fresh_planar_brick_crc.log"]
+
+[[evidence]]
+id = "weighted_source_crc"
+command = "OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=1 JULIA_NUM_PRECOMPILE_TASKS=1 julia --project=. --startup-file=no --heap-size-hint=350M TEMP/diffmom_fresh_weighted_source_crc_bench.jl"
+checks = 84
+result = "69 coherent weighted source checks+15 brick preservation checks pass; normal baseline/current outputs equal in3 warmed kernels"
+log = "TEMP/diffmom_fresh_weighted_source_crc_bench.log"
+peak_rss_bytes = 441884672
+notes = "No broad suite;5sourcefamilies,far/point/RHS,complexweights,nesting,cancellation,zero,callbacks,overflow,budgets; ordinary dipolefield0alloc asserted"
+
+[[evidence]]
+id = "source_original14_16_crc"
+checks = 165
+result = "all165@test checks and all original@assert gates pass"
+log = "TEMP/diffmom_fresh_source_original14_16_crc.log"
+seconds = 12.7
+peak_rss_bytes = 445206528
+notes = "Verbatim Test14..16 bodies apart from one authorized exact==roundedchild ->approx4eps assertion; added independent4672bit max*exp(-ik) finalformula oracle; helpers andeta0 restored in isolateddriver"
+
+[[benchmarks]]
+id = "far_multi"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 608
+current_bytes = 608
+baseline_seconds = 2.2643e-07
+current_seconds = 2.3706e-07
+protocol = "warmed, min10allocation samples; min5time blocks,10000field or100assembly calls/block;1Julia/BLASthread; timings noisy"
+log = "TEMP/diffmom_fresh_weighted_source_crc_bench.log"
+
+[[benchmarks]]
+id = "point_multi"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 288
+current_bytes = 288
+baseline_seconds = 1.8586e-07
+current_seconds = 1.8828e-07
+protocol = "warmed, min10allocation samples; min5time blocks,10000field or100assembly calls/block;1Julia/BLASthread; timings noisy"
+log = "TEMP/diffmom_fresh_weighted_source_crc_bench.log"
+
+[[benchmarks]]
+id = "assembly_multi_cached21"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 3760
+current_bytes = 3760
+baseline_seconds = 1.554e-05
+current_seconds = 1.5645e-05
+protocol = "warmed, min10allocation samples; min5time blocks,10000field or100assembly calls/block;1Julia/BLASthread; timings noisy"
+log = "TEMP/diffmom_fresh_weighted_source_crc_bench.log"
+
+[delegated_after_initial_map]
+agent = "planar_physics_audit"
+files = ["src/Types.jl", "src/Workflow.jl", "src/solver/IterativeSolve.jl", "src/solver/NearFieldPreconditioner.jl", "src/solver/RetainedSolve.jl", "src/solver/Solve.jl", "src/error_estimation/Calibration.jl", "src/error_estimation/Conditioning.jl", "src/error_estimation/GalerkinError.jl"]
+notes = "Root delegated fresh body audit after initial map; meanfix committed25174314, newvariancecompressionfix physicsowned; this ledger originalreadentries retained as partialevidence"
+
+[coverage_counts]
+complete_body_reads = 19
+partial_body_reads = 18
+unread_body_files = 18
+complete_body_reads_still_owned = 18
+help_requested = ["seven mom3d files,8229 area lines; six entire bodies unread and Types3D partial"]
+unread_files = ["src/basis/PeriodicGreens.jl", "src/assembly/CompositeOperator.jl", "src/assembly/DensityInterpolation.jl", "src/assembly/EFIE.jl", "src/assembly/Impedance.jl", "src/assembly/PeriodicEFIE.jl", "src/assembly/SingularIntegrals.jl", "src/optimization/MultiAngleRCS.jl", "src/optimization/Optimize.jl", "src/mom2d/Assembly2D.jl", "src/mom2d/Greens2D.jl", "src/mom2d/Mie2D.jl", "src/mom3d/Adjoint3D.jl", "src/mom3d/DDA3D.jl", "src/mom3d/EMDDA3D.jl", "src/mom3d/FFTDDA3D.jl", "src/mom3d/MaterialModels3D.jl", "src/mom3d/SurfaceIE3D.jl"]
+
+[[findings]]
+id = "accepted_power_finite_cancellation"
+dimension = "domain and implementation"
+status = "fixed locally; new13 and existing114 powerwave checks pass"
+verification = "finite V=[1e16,3,1e16],I=[1,1,-1] reports2.0W instead of independent4352bit1.5W; subnormal-product aggregation variants also covered"
+fix = "allocation-free real-product magnitude screen; existing bounded exact-dot recovery for cancellation/subnormal results; proven reactive/zero earlypath"
+files = ["src/planar/PlanarPowerWaves.jl", "test/test_planar_accepted_power_cancellation.jl"]
+logs = ["TEMP/diffmom_fresh_planar_accepted_power_probe.log", "TEMP/diffmom_fresh_accepted_power_crc.log", "TEMP/diffmom_fresh_source_freeze_crc.log"]
+
+[[evidence]]
+id = "final_source_and_support_freeze_crc"
+checks = 103
+result = "latest73 weighted+17geometry/provenance+13acceptedpower pass; preserved dd2 Multi proves imported mapping failure"
+log = "TEMP/diffmom_fresh_source_freeze_crc.log"
+peak_rss_bytes = 465793024
+notes = "no broad suite; last process ended45304; normal imported21 output allocation2128 bytes unchanged"
+
+[[evidence]]
+id = "existing_power_waves"
+checks = 114
+result = "existing file passes all114; new13 later verifies final subnormal guard"
+log = "TEMP/diffmom_fresh_accepted_power_crc.log"
+peak_rss_bytes = 1033183232
+notes = "physical current/calibration/project blocks42.2s and40.6s include compilation; not a warmed kernel benchmark"
+
+[[benchmarks]]
+id = "accepted_power_1"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 0
+current_bytes = 0
+baseline_seconds = 7.34e-09
+current_seconds = 1.232e-08
+protocol = "warmed,min10alloc/min5time blocks,10000power or100assembly calls/block;1Julia/BLASthread; noisy timings"
+log = "TEMP/diffmom_fresh_source_freeze_crc.log"
+
+[[benchmarks]]
+id = "accepted_power_12"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 0
+current_bytes = 0
+baseline_seconds = 2.2e-08
+current_seconds = 8.043e-08
+protocol = "warmed,min10alloc/min5time blocks,10000power or100assembly calls/block;1Julia/BLASthread; noisy timings"
+log = "TEMP/diffmom_fresh_source_freeze_crc.log"
+
+[[benchmarks]]
+id = "imported_multi_cached21"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 2128
+current_bytes = 2128
+baseline_seconds = 3.256e-06
+current_seconds = 3.26e-06
+protocol = "warmed,min10alloc/min5time blocks,10000power or100assembly calls/block;1Julia/BLASthread; noisy timings"
+log = "TEMP/diffmom_fresh_source_freeze_crc.log"
+
+[[findings]]
+id = "loop_moment_and_coherent_precision"
+dimension = "domain, implementation and retained resources"
+status = "confirmed and fixed; included final78 weightedchecks"
+verification = "k=2^900,I=a=2^-900 singleloop returns0; interleaved large(I=a=2^900)+small-large also0; independent10000bit eta0/4*k^2*I*a^2 =1.1142290523796408e-269"
+fix = "route extreme standalone loops through complete cold kernels; derive exact stored-dyadic product/sum precision from real-component low/high bits plus expansion carries; grow retained rows and enforce dynamic byte cap before arithmetic; preserve fixed leaf precision/callback counts"
+logs = ["TEMP/diffmom_fresh_loop_precision_probe.log", "TEMP/diffmom_fresh_adaptive_source_crc.log", "TEMP/diffmom_fresh_source_final_crc.log"]
+
+[[evidence]]
+id = "adaptive_final_crc"
+checks = 275
+result = "originalsource165 plus weighted78 plusgeometry/circuit19 pluspower13 pass; all original@assert gates pass"
+log = "TEMP/diffmom_fresh_source_final_crc.log"
+peak_rss_bytes = 539086848
+notes = "latest5sourcefiles;1Julia/BLASthread; originalsourceblock12.9s, weighted3.4s,geometry3.0s,power0.4s include compilation; no wholefullvalidation pass claimed"
+
+[[benchmarks]]
+id = "final_far_multi"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 608
+current_bytes = 608
+baseline_seconds = 2.2566e-07
+current_seconds = 2.6385e-07
+protocol = "warmed,min10alloc/min5time blocks;1Julia/BLASthread; noisy timings; final5-sourceversion"
+log = "TEMP/diffmom_fresh_source_final_crc.log"
+
+[[benchmarks]]
+id = "final_point_multi"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 288
+current_bytes = 288
+baseline_seconds = 1.8729e-07
+current_seconds = 2.0607e-07
+protocol = "warmed,min10alloc/min5time blocks;1Julia/BLASthread; noisy timings; final5-sourceversion"
+log = "TEMP/diffmom_fresh_source_final_crc.log"
+
+[[benchmarks]]
+id = "final_assembly_multi_cached21"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 3760
+current_bytes = 3760
+baseline_seconds = 2.0581e-05
+current_seconds = 1.5218e-05
+protocol = "warmed,min10alloc/min5time blocks;1Julia/BLASthread; noisy timings; final5-sourceversion"
+log = "TEMP/diffmom_fresh_source_final_crc.log"
+
+[[benchmarks]]
+id = "final_accepted_power_1"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 0
+current_bytes = 0
+baseline_seconds = 6.75e-09
+current_seconds = 1.34e-08
+protocol = "warmed,min10alloc/min5time blocks;1Julia/BLASthread; noisy timings; final5-sourceversion"
+log = "TEMP/diffmom_fresh_source_final_crc.log"
+
+[[benchmarks]]
+id = "final_accepted_power_12"
+baseline_revision = "dd2f0eb4"
+baseline_bytes = 0
+current_bytes = 0
+baseline_seconds = 1.089e-08
+current_seconds = 7.838e-08
+protocol = "warmed,min10alloc/min5time blocks;1Julia/BLASthread; noisy timings; final5-sourceversion"
+log = "TEMP/diffmom_fresh_source_final_crc.log"
+
+[delegated_after_freeze]
+root = ["src/mom3d/Types3D.jl", "src/mom3d/MaterialModels3D.jl", "src/mom3d/Adjoint3D.jl", "src/mom3d/FFTDDA3D.jl", "src/mom3d/DDA3D.jl"]
+physics = ["src/mom3d/EMDDA3D.jl", "src/mom3d/SurfaceIE3D.jl", "src/mom2d/Types2D.jl", "src/mom2d/Excitation2D.jl", "src/mom2d/Scatter2D.jl", "src/mom2d/Assembly2D.jl", "src/mom2d/Greens2D.jl", "src/mom2d/Mie2D.jl"]
+remaining_owner_sources = 33
+remaining_complete_body_reads = 21
+remaining_partial_body_reads = 9
+remaining_unread_body_files = 3
+remaining_unread_files = ["src/basis/PeriodicGreens.jl", "src/assembly/PeriodicEFIE.jl", "src/assembly/SingularIntegrals.jl"]
+
+[[findings]]
+id = "composite_joint_underflow"
+dimension = "domain, implementation and performance tradeoff"
+status = "confirmed; complete conservative guard requested by root, source unchanged during global-test freeze"
+verification = "a=2^-538, eight1x1 mass matrices a and theta=a with zero base: getindex and mul! return0; independent dyadic exact sum -8a^2=-2^-1073 is representable"
+fix = "pending: route extreme stored operands/input/coefficient/output scales through existing8704bit complete-product fallback; preserve mutable borrowed-storage semantics and0-byte normal mul!"
+logs = ["TEMP/diffmom_fresh_composite_underflow_probe.log", "TEMP/diffmom_fresh_composite_guard_bench.log"]
+
+[[benchmarks]]
+id = "composite_guard_prototype21"
+baseline_bytes = 0
+current_bytes = 0
+baseline_seconds = 1.5092e-6
+screen_seconds = 3.764e-7
+protocol = "guard-only TEMP prototype; warmed min10alloc/min5time blocks1000calls, actual local mass21RWG fixture;1Julia/BLASthread; not adopted production"
+log = "TEMP/diffmom_fresh_composite_guard_bench.log"
+
+[[benchmarks]]
+id = "composite_guard_prototype176"
+baseline_bytes = 0
+current_bytes = 0
+baseline_seconds = 6.41255e-5
+screen_seconds = 2.10363e-5
+protocol = "guard-only TEMP prototype; warmed min10alloc/min5time blocks1000calls, actual local mass176RWG fixture;1Julia/BLASthread; not adopted production"
+log = "TEMP/diffmom_fresh_composite_guard_bench.log"

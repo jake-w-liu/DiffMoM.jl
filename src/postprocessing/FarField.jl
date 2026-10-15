@@ -763,13 +763,15 @@ end
     mono::MonopoleExcitation,
     r_hat::Vec3,
     k::Float64,
-)
+    ::Val{wide}=Val(false),
+) where {wide}
     axis_moment = CVec3(ntuple(
         index -> ComplexF64(mono.axis[index]), 3))
     precision = max(
         _MONOPOLE_EXACT_BASE_PRECISION,
         _dipole_angular_precision(axis_moment, r_hat),
         _source_directional_phase_precision(k, r_hat, mono.position),
+        wide ? Base.precision(BigFloat) : 0,
     )
     return setprecision(BigFloat, precision) do
         direction = SVector{3,BigFloat}(
@@ -784,6 +786,7 @@ end
             -one(BigFloat),
             one(BigFloat),
         )
+        mono.include_image && cosine < 0 && return zero(CVec3)
         angular_factor = _monopole_farfield_angular_factor_big(
             mono, BigFloat(k), cosine)
         theta_numerator = cross(direction, cross(direction, axis)) /
@@ -796,7 +799,8 @@ end
             index -> angular_factor * theta_numerator[index] * phase,
             3,
         ))
-        return _finite_source_vector(value, "MonopoleExcitation far field")
+        return wide ? value :
+            _finite_source_vector(value, "MonopoleExcitation far field")
     end
 end
 
@@ -960,8 +964,10 @@ end
     loop::LoopExcitation,
     r_hat::Vec3,
     k::Float64,
-)
-    precision = _loop_farfield_precision(loop, r_hat, k)
+    ::Val{wide}=Val(false),
+) where {wide}
+    precision = max(_loop_farfield_precision(loop, r_hat, k),
+                    wide ? Base.precision(BigFloat) : 0)
     return setprecision(BigFloat, precision) do
         direction = SVector{3,BigFloat}(
             ntuple(index -> BigFloat(r_hat[index]), 3))
@@ -979,8 +985,9 @@ end
             direction[index] * BigFloat(loop.center[index])
             for index in 1:3) / direction_norm
         phase = exp(Complex{BigFloat}(0, phase_argument))
-        return _finite_source_vector(
-            unphased * phase, "LoopExcitation far field")
+        value = unphased * phase
+        return wide ? value :
+            _finite_source_vector(value, "LoopExcitation far field")
     end
 end
 
@@ -990,6 +997,8 @@ function incident_farfield(loop::LoopExcitation, r_hat::Vec3, k::Real)
     # m = I·π·a²·n̂ placed at the loop centre.
     rh, kf = _validated_incident_farfield_args(r_hat, k)
     _validate_incident_farfield_source(loop, kf)
+    _loop_scaling_requires_fallback(loop) &&
+        return _loop_farfield_exact(loop,r_hat,kf)
     m = _loop_equivalent_moment(loop)
     dip = DipoleExcitation(loop.center, m, loop.normal, :magnetic, loop.frequency)
     E_far = _dipole_farfield_unphased(dip, r_hat, kf)
@@ -1008,17 +1017,19 @@ function incident_farfield(loop::LoopExcitation, r_hat::Vec3, k::Real)
 end
 
 @noinline function _pattern_farfield_transform_exact(
-    Ftheta::ComplexF64,
-    Fphi::ComplexF64,
+    Ftheta::Number,
+    Fphi::Number,
     etheta::Vec3,
     ephi::Vec3,
     phase_center::Vec3,
     r_hat::Vec3,
     k::Float64,
-)
+    ::Val{wide}=Val(false),
+) where {wide}
     precision = max(
         _MULTI_SOURCE_EXACT_PRECISION,
         _source_directional_phase_precision(k, r_hat, phase_center),
+        wide ? Base.precision(BigFloat) : 0,
     )
     return setprecision(BigFloat, precision) do
         direction = SVector{3,BigFloat}(
@@ -1036,8 +1047,8 @@ end
                  phi_coefficient * BigFloat(ephi[index])) * phase,
             3,
         ))
-        return _finite_source_vector(
-            value, "PatternFeedExcitation far field")
+        return wide ? value :
+            _finite_source_vector(value, "PatternFeedExcitation far field")
     end
 end
 
@@ -1085,24 +1096,62 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
     return value
 end
 
+_multi_incident_farfield_wide(excitation::AbstractExcitation, r_hat::Vec3, k::Real) =
+    incident_farfield(excitation, r_hat, k)
+
+function _multi_incident_farfield_wide(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
+    _, kf = _validated_incident_farfield_args(r_hat, k)
+    _validate_incident_farfield_source(dipole, kf)
+    return _dipole_farfield_exact(dipole, r_hat, kf, Val(true))
+end
+
+function _multi_incident_farfield_wide(source::Union{LoopExcitation,MonopoleExcitation},
+                                      r_hat::Vec3, k::Real)
+    _, kf = _validated_incident_farfield_args(r_hat, k)
+    _validate_incident_farfield_source(source, kf)
+    return source isa LoopExcitation ?
+        _loop_farfield_exact(source, r_hat, kf, Val(true)) :
+        _monopole_farfield_exact(source, r_hat, kf, Val(true))
+end
+
+function _multi_incident_farfield_wide(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
+    direction, kf = _validated_incident_farfield_args(r_hat, k)
+    _validate_incident_farfield_source(pat, kf)
+    theta = acos(clamp(direction[3], -1.0, 1.0))
+    phi = mod(atan(direction[2], direction[1]), 2pi)
+    _, etheta, ephi = _spherical_basis(theta, phi)
+    ft = _pattern_interp_big(pat, pat.Ftheta, theta, phi)
+    fp = _pattern_interp_big(pat, pat.Fphi, theta, phi)
+    if pat.convention == :exp_minus_iwt
+        ft, fp = conj(ft), conj(fp)
+    end
+    return _pattern_farfield_transform_exact(ft, fp, etheta, ephi,
+        pat.phase_center, r_hat, kf, Val(true))
+end
+
+_multi_incident_farfield_wide(multi::MultiExcitation, r_hat::Vec3, k::Real) =
+    _multi_incident_farfield_exact(multi, r_hat, k, Val(true))
+
 @noinline function _multi_incident_farfield_exact(
-        multi::MultiExcitation, r_hat::Vec3, k::Real)
+        multi::MultiExcitation, r_hat::Vec3, k::Real,
+        ::Val{wide}=Val(false)) where {wide}
     return setprecision(BigFloat, _MULTI_SOURCE_EXACT_PRECISION) do
         total = Complex{BigFloat}[
             zero(Complex{BigFloat}),
             zero(Complex{BigFloat}),
             zero(Complex{BigFloat}),
         ]
+        budget = _MultiSourceExactBudget(_multi_exact_accumulator_bytes(3),
+                                         _DEFAULT_MAX_MULTI_EXACT_BYTES)
         @inbounds for index in eachindex(multi.excitations, multi.weights)
-            child = incident_farfield(
+            child = _multi_incident_farfield_wide(
                 multi.excitations[index], r_hat, k)
-            weight = Complex{BigFloat}(multi.weights[index])
             for component in 1:3
-                total[component] +=
-                    weight * Complex{BigFloat}(child[component])
+                _source_exact_add_product!(total,component,budget,
+                    multi.weights[index],child[component])
             end
         end
-        return _finite_source_vector(total, "MultiExcitation far field")
+        return wide ? total : _finite_source_vector(total, "MultiExcitation far field")
     end
 end
 
@@ -1111,7 +1160,14 @@ function incident_farfield(multi::MultiExcitation, r_hat::Vec3, k::Real)
     _validate_excitation_model(multi)
     E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     for (i, (exc, w)) in enumerate(zip(multi.excitations, multi.weights))
-        child = incident_farfield(exc, r_hat, k)::CVec3
+        child = (try
+            incident_farfield(exc, r_hat, k)
+        catch err
+            if err isa OverflowError && _has_wide_incident_field(exc)
+                return _multi_incident_farfield_exact(multi, r_hat, k)
+            end
+            rethrow()
+        end)::CVec3
         _source_scaled_vector_requires_fallback(w, child) &&
             return _multi_incident_farfield_exact(multi, r_hat, k)
         contribution = w * child

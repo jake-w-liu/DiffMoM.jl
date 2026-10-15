@@ -175,7 +175,7 @@ end
 end
 
 @noinline function _self_cell_integral_large_exact_2d(
-        k::Float64, a_eq::Float64)
+        k::Float64, a_eq::Float64, scaled::Bool=false)
     precision = _greens_phase_precision_2d(
         k, Vec2(a_eq, 0.0), Vec2(0.0, 0.0))
     return setprecision(BigFloat, precision) do
@@ -195,10 +195,10 @@ end
         hankel = sqrt(2 / (BigFloat(pi) * argument)) *
                  exp(Complex{BigFloat}(
                      0, -(argument - 3BigFloat(pi) / 4))) * series
-        value = (-Complex{BigFloat}(0, 1) * BigFloat(pi) /
-                 (2 * k_big^2)) *
+        value = (-Complex{BigFloat}(0, 1) * BigFloat(pi) / 2) *
                 (argument * hankel -
                  2Complex{BigFloat}(0, 1) / BigFloat(pi))
+        scaled || (value /= k_big^2)
         converted = ComplexF64(value)
         isfinite(converted) ||
             throw(OverflowError(

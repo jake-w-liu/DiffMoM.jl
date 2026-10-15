@@ -1,0 +1,214 @@
+audit_date = "2026-10-15"
+base_revision = "dd2f0eb4df088a25b95e7ee2b97fe52454d1fcc6"
+status = "fresh audit in progress; seven confirmed fixes locally verified; 33 of 37 owned source bodies freshly read, 4 explicitly partial; global full validation pending"
+whole_surface_complete = false
+whole_repository_bug_free_claim = false
+global_optimization_claim = false
+julia = "1.13.1"
+julia_threads = 1
+blas_threads = 1
+pending = ["Complete 4 explicitly marked source-body gaps", "Root's serial full reference validation on stable final source", "Independent native SBOX interference oracle for diagonal GEOVAR candidate", "Representative native/project performance measurements before any optimization claim"]
+
+owned_files = [
+  "src/planar/PlanarArtworkCertified.jl", "src/planar/PlanarArtworkExact.jl",
+  "src/planar/PlanarArtworkIO.jl", "src/planar/PlanarArtworkSweep.jl",
+  "src/planar/PlanarCalibration.jl", "src/planar/PlanarCalibrationStandards.jl",
+  "src/planar/PlanarCircuit.jl",
+  "src/planar/PlanarDeembed.jl", "src/planar/PlanarExtract.jl",
+  "src/planar/PlanarGerberIO.jl", "src/planar/PlanarLayout.jl",
+  "src/planar/PlanarLayoutIO.jl",
+  "src/planar/PlanarNetworkIO.jl",
+  "src/planar/PlanarODBFonts.jl", "src/planar/PlanarODBIO.jl",
+  "src/planar/PlanarODBSymbolsExtra.jl",
+  "src/planar/PlanarProject.jl", "src/planar/PlanarProjectCircuitNodes.jl",
+  "src/planar/PlanarProjectFloating.jl", "src/planar/PlanarProjectModel.jl",
+  "src/planar/PlanarProjectPhysical.jl", "src/planar/PlanarProjectSolve.jl",
+  "src/planar/PlanarSonnetComponents.jl", "src/planar/PlanarSonnetConformal.jl",
+  "src/planar/PlanarSonnetFloating.jl", "src/planar/PlanarSonnetGeometryVariables.jl",
+  "src/planar/PlanarSonnetIO.jl", "src/planar/PlanarSonnetModelFiles.jl",
+  "src/planar/PlanarSonnetProjectFiles.jl", "src/planar/PlanarSonnetRasterResources.jl",
+  "src/planar/PlanarSonnetScalarFiles.jl", "src/planar/PlanarSonnetTechnology.jl",
+  "src/planar/PlanarSpectreIO.jl", "src/planar/PlanarSpiceCoupling.jl",
+  "src/planar/PlanarSpiceIO.jl", "src/planar/PlanarSpiceLines.jl",
+  "src/planar/PlanarVectorFit.jl",
+]
+delegated_support = "Core agent owns 10 support files; root owns Library, Connectivity, ArtworkAffine/Bounds/LinearExact/RegionExact, ODBCompression and ODBLayers; physics owns 25 numerical files. Current planar inventory: 37 here + 10 core support + 8 root + 25 physics = 80. Library, Connectivity and five of the six smaller artwork/transport files were also independently body-read here before transfer."
+
+[body_review]
+"PlanarCalibration.jl" = "complete fresh body read; public ABCD range bug fixed; 389 adjacent checks passed"
+"PlanarCalibrationStandards.jl" = "complete fresh body read; full current standard-generator execution pending root validation"
+"PlanarCircuit.jl" = "complete fresh body read; fresh circuit and resource tests passed"
+"PlanarDeembed.jl" = "complete fresh body read; current scalar range and short-section regressions passed"
+"PlanarExtract.jl" = "complete fresh body read; fresh extraction range tests passed"
+"PlanarNetworkIO.jl" = "complete fresh body read; fresh full network/Touchstone tests passed"
+"PlanarLayout.jl" = "complete fresh body read; fresh full project tests passed; direct full layout execution pending"
+"PlanarProject.jl" = "complete fresh body read; fresh full project tests passed"
+"PlanarProjectModel.jl" = "complete fresh body read; fresh full project tests passed"
+"PlanarProjectPhysical.jl" = "complete fresh body read; physical/floating source pathways traced; full physical file pending execution"
+"PlanarProjectCircuitNodes.jl" = "complete fresh body read; shared-node bug fixed; 200 adjacent checks passed"
+"PlanarProjectFloating.jl" = "complete fresh body read; fresh full project_floating tests passed"
+"PlanarProjectSolve.jl" = "complete fresh body read; shared-node bug fixed; 200 adjacent checks passed"
+"PlanarSpectreIO.jl" = "complete fresh body read; full current Spectre tests passed before latest W normalization"
+"PlanarSpiceIO.jl" = "complete fresh body read; provenance/name ownership bug fixed; 9127 adjacent checks passed"
+"PlanarSpiceLines.jl" = "complete fresh body read; W PSD scale bug fixed; 7301 adjacent checks passed"
+"PlanarSpiceCoupling.jl" = "complete fresh body read; fresh full coupled-SPICE tests passed"
+"PlanarVectorFit.jl" = "partial: fit/eval/passivity/certificate/export complete; exact KYP/GMP internals pending full fresh read"
+"PlanarArtworkCertified.jl" = "complete fresh body read; outward interval enclosure, trit dispatch, root event/stroke certification and exact fallback traced; fresh artwork corpus passed"
+"PlanarArtworkExact.jl" = "complete fresh body read; exact quadratic field/sign, event witnesses, rational separators, periodic pad/thermal queries and resource preflight traced; fresh artwork corpus passed"
+"PlanarArtworkIO.jl" = "complete fresh body read; ordered masks/lowering and aliases traced; fresh artwork corpus passed"
+"PlanarArtworkSweep.jl" = "complete fresh body read; stroke boundary/depth/resource flows traced; fresh artwork corpus passed"
+"PlanarGerberIO.jl" = "complete fresh body read; macro/aperture, image/coordinate transforms, modal state, regions, blocks/repeats and emit ownership traced; fresh full Gerber corpus passed"
+"PlanarLayoutIO.jl" = "complete fresh body read; GDS/DXF hierarchy, transforms, curve/path and material/via lowering traced; fresh full layout file tests passed"
+"PlanarODBFonts.jl" = "complete fresh body read; font insertion, dynamic/deferred context, barcode grammar/encoding/render/resource flows traced; Full ASCII literal shift bug fixed, 399 adjacent checks passed"
+"PlanarODBIO.jl" = "partial: public reader/hierarchy/state paths reviewed; complete dispatch body closure pending"
+"PlanarODBSymbolsExtra.jl" = "complete fresh body read; periodic pads/thermals, stencil fillet/annulus/symbol dispatch and boundary work windows traced; fresh full symbol/predicate corpus passed"
+"PlanarSonnetIO.jl" = "partial: public parse/stage/solve/ownership paths reviewed; remaining large native bodies pending"
+"PlanarSonnetScalarFiles.jl" = "complete fresh body read; lexer/CSV interpolation/snapshot/root/ownership paths traced; full scalar files corpus execution pending"
+"PlanarSonnetGeometryVariables.jl" = "complete fresh body read; dependency/anchor/radial/symmetric/port/resource flows traced; diagonal SBOX candidate needs actual native oracle"
+"PlanarSonnetTechnology.jl" = "partial: physical technology dispatch reviewed; full body closure pending"
+"PlanarSonnetModelFiles.jl" = "complete fresh body read; snapshot/binding/canonical identity/root/transaction flows traced; full native SPARAM test file passed 271 checks"
+"PlanarSonnetProjectFiles.jl" = "complete fresh body read; snapshots/DEF/PRJ/geometry child/task-owned recursion traced; full SPROJ file passed 160 checks"
+"PlanarSonnetRasterResources.jl" = "complete fresh body read; masks/metadata/basis/retained solve limits traced; tuple retained-result budget and original normal calibration regressions passed"
+"PlanarSonnetConformal.jl" = "complete fresh body read; endpoint overlays, material/port/via lowering, resource and solve flows traced; full native conformal execution pending"
+"PlanarSonnetComponents.jl" = "complete fresh body read; native circuit/material/SPICE boundaries and all lowering/solve/current paths traced; full native SPARAM and FLOAT test files passed"
+"PlanarSonnetFloating.jl" = "complete fresh body read; geometry and FIX-pin retained-result budget defects fixed; full FLOAT, tiny public FIX-pin and ordinary calibration CRC passed 200 checks"
+
+[[areas]]
+id = "circuits_networks_extraction_calibration"
+files = ["PlanarCircuit.jl", "PlanarNetworkIO.jl", "PlanarExtract.jl", "PlanarDeembed.jl", "PlanarCalibration.jl", "PlanarCalibrationStandards.jl"]
+domain = "Traced Kurokawa terminal equations, exact opens/shorts, transformer and transmission-line constraints, Touchstone normalized/SI conversion and independent calibration/extraction oracle cases."
+implementation = "All six bodies freshly read. Newly verified public ABCD contraction range failure is being fixed; no additional verdict from passing tests alone."
+resources = "Current full circuit and network resource tests passed; owned matrix conversion, gauge selection, input snapshots and file prevalidation traced."
+performance = "Workspace regression passed; observed circuit-group process peak 926261248 bytes. No new global speed claim."
+evidence = "Fresh circuit group: 20 files, 11885 assertions; %TEMP%/diffmom-fresh-circuit-network.log."
+
+[[areas]]
+id = "spice_spectre"
+files = ["PlanarSpiceIO.jl", "PlanarSpiceCoupling.jl", "PlanarSpiceLines.jl", "PlanarSpectreIO.jl"]
+domain = "Fresh full SPICE/coupled/line/Spectre tests include retained ngspice reference data, case-sensitive Spectre expressions, SI suffixes, physical floating terminals and coupled-inductor PSD."
+implementation = "All four bodies freshly read, including lexical/default/include/root/compiler flows, exact coupling, line-model stamping and Spectre lowering."
+resources = "Depth, record, source, coupling and compiled model limits inspected; current bounded/full resource regressions passed."
+performance = "No measured new hotspot or optimization claim; isolated circuit group stayed below 1 GiB observed peak."
+evidence = "Full test_planar_spice, spice_coupled, spice_lines, spectre, spice_reference and spectre_expression_dialect passed in this run."
+
+[[areas]]
+id = "rational_models"
+files = ["PlanarVectorFit.jl"]
+domain = "Fresh full fit, exact evaluation, IEEE rounding, passivity, certificate, conjugate-pole and exported SPICE comparisons passed."
+implementation = "Fit/evaluation/passivity/certificate/export paths traced; exact KYP/GMP internals still need complete fresh body review."
+resources = "Confirmed and fixed frequency arrays allocated before rejection and n_passivity grid omitted from cap. Internal exact evaluation, certificate, repair and error reporting now use remaining fit budget."
+performance = "Before fix: rejection grew 34172 to 2106595 allocated bytes at 1024 to 65536 samples. Corrected 64/4096 sample rejection stays below 16384 bytes; normal evaluation allocation tests pass."
+evidence = "Fresh rational/exact group: 14 files, 1697 assertions. Final phase CRC: 12 files, 1036 assertions, including 11 new preflight checks; logs under %TEMP%/diffmom-fresh-vectorfit.log and diffmom-fresh-fit-phase-crc.log."
+
+[[areas]]
+id = "artwork_layout_files"
+files = ["PlanarArtworkAffine.jl", "PlanarArtworkBounds.jl", "PlanarArtworkCertified.jl", "PlanarArtworkExact.jl", "PlanarArtworkIO.jl", "PlanarArtworkLinearExact.jl", "PlanarArtworkRegionExact.jl", "PlanarArtworkSweep.jl", "PlanarGerberIO.jl", "PlanarLayoutIO.jl", "PlanarODBCompression.jl", "PlanarODBFonts.jl", "PlanarODBIO.jl", "PlanarODBLayers.jl", "PlanarODBSymbolsExtra.jl"]
+domain = "Fresh complete existing Gerber/ODB/layout file tests cover analytic membership, ordered polarity, independent boundary/ray/native data, units, transforms, holes/islands, font and compressed transport."
+implementation = "All owned artwork bodies except ODBIO freshly read end-to-end, including certified/quadratic exact/stencil arithmetic and Gerber dispatch. Full ASCII barcode shift literals fixed; remaining ODB reader body closure pending."
+resources = "Input/decompression/archive/curve/shape/stroke bounds and scoped temporary cleanup traced; all original resource tests in the artwork group passed."
+performance = "Current large generated predicate suites ran bounded; observed intermediate group peak 805588992 bytes (not a complete process-peak measurement). No unmeasured optimization claim."
+evidence = "Fresh artwork plus fit CRC group: 29 files, 590826 assertions; %TEMP%/diffmom-fresh-artwork.log."
+
+[[areas]]
+id = "native_sonnet"
+files = ["PlanarSonnetIO.jl", "PlanarSonnetScalarFiles.jl", "PlanarSonnetGeometryVariables.jl", "PlanarSonnetTechnology.jl", "PlanarSonnetModelFiles.jl", "PlanarSonnetProjectFiles.jl", "PlanarSonnetRasterResources.jl", "PlanarSonnetConformal.jl", "PlanarSonnetComponents.jl", "PlanarSonnetFloating.jl"]
+domain = "Fresh public contracts, source identity, R/X/L/C units, variable/technology and balanced source flow inspected against current retained native test definitions; full current-run native corpus execution pending root's serial validation."
+implementation = "Complete fresh bodies of eight native support files read; SonnetIO and Technology remain partial. Full model/project/FLOAT files freshly executed."
+resources = "Task-owned recursion, canonical bindings, snapshot alias checks, retained solves and staging budgets traced. Confirmed FLOAT geometry and FIX-pin retained-result reservations fixed with shared alias-aware counters."
+performance = "Focused FLOAT counter test cold 1.6 seconds after removing full staging. Full-only public FIX-pin CRC cold 79.5 seconds; same-process warm repeat 0.116 seconds. No parser throughput/global optimization claim."
+evidence = "Native SPARAM 271 and SPROJ 160 checks passed; latest FLOAT/helper/ordinary calibration CRC 200 checks. Bounded successful FIX-pin probe showed parent retained EM 16272 bytes omitted from a 2097152-byte forwarded phase cap; peak process RSS 1173204992 bytes."
+
+[[areas]]
+id = "declarative_layout_project_library"
+files = ["PlanarProject.jl", "PlanarProjectModel.jl", "PlanarProjectPhysical.jl", "PlanarProjectCircuitNodes.jl", "PlanarProjectFloating.jl", "PlanarProjectSolve.jl", "PlanarLayout.jl"]
+domain = "Schema/SI expressions, node/source incidence, thick/floating conductor source contracts, primitive reference laws and conductor connectivity inspected."
+implementation = "All seven owned bodies freshly read; Library and Connectivity also read here before root took ownership. Shared-node no-component wiring bug confirmed and fixed."
+resources = "Read source-incidence, floating staging, retained EM/MNA boundaries and source ownership; full current project/library execution pending."
+performance = "No new representative project/library measurements yet."
+evidence = "Current public entry-point and full-test/source maps rebuilt; prior-pass results intentionally excluded."
+
+[[candidates]]
+id = "fit_frequency_preflight"
+status = "confirmed_fixed_crc_passed"
+verification = "1-byte max_bytes rejection allocated 2106595 bytes at 65536 samples before sorting/conversion moved behind existing preflight."
+fix = "PlanarVectorFit.jl; test_planar_rational_fit_preflight.jl."
+
+[[candidates]]
+id = "fit_passivity_grid_and_nested_phases"
+status = "confirmed_fixed_crc_passed"
+verification = "Three 1x1 samples, n_passivity 8192, max_bytes 65536 accepted despite two 65536-byte grids; warmed cumulative allocation 10637060 bytes."
+fix = "Upfront grid/eigensolve reservation; released QR arrays; alias-deduplicated retained model/sample charges; remaining budgets forwarded into exact evaluation, certificates, repair and RMS reporting."
+
+[[candidates]]
+id = "project_unloaded_shared_nodes"
+dimension = "domain and implementation"
+status = "confirmed_fixed_crc_passed"
+verification = "Two external project ports on the same declared node pair bypassed MNA with empty components; response differed from independent parallel-wiring KCL by norm 0.0572865140. An exact open component changed S and matched KCL within 6.8e-15."
+fix = "O(nodes+ports) incidence-graph cycle test enters MNA only when unloaded source voltages have wiring constraints; ordinary independent unloaded ports retain direct EM path."
+reverify = "New 8-check shared-node regression and full project/floating/nodes/SPICE files: 5 files, 200 assertions passed."
+
+[[candidates]]
+id = "spice_w_rlgc_psd_scale"
+dimension = "domain"
+status = "confirmed_fixed_crc_passed"
+verification = "Public W compilation accepted C=[1e-12 -2e-12;-2e-12 1e-12], with eigenvalues -1e-12 and 3e-12, because max(1,maxabs(C)) supplied a unit-scale tolerance."
+fix = "Normalize each nonzero RLGC matrix before its in-place Hermitian eigenvalue check; exact zero matrices skip the eigensolve."
+reverify = "New 9-check regression across R/L/G/C scales and singular PSD matrices plus full lines/coupling/Spectre files: 4 files, 7301 assertions passed."
+
+[[candidates]]
+id = "public_abcd_block_cancellation"
+dimension = "domain and implementation"
+status = "confirmed_fixed_crc_passed"
+verification = "Public planar_y_to_abcd([1e154 -1.5e308;-1 2e154]) returned Inf+NaN in C although its value is approximately 5e307; inverse public conversion had the corresponding finite Y12 failure."
+fix = "Reuse robust scalar conversions for 2-port networks; preserve BLAS for ordinary blocks and recover only nonfinite dot contractions with five reused MPFR scalar roles. Check output finiteness and reserve exceptional scratch in group calibration."
+reverify = "New 8-check public scalar/multiconductor regression plus full calibration/stored-length/scalar-range/short-section files: 5 files, 389 assertions passed."
+
+[[candidates]]
+id = "spice_nonprimitive_instance_provenance"
+dimension = "implementation and resources"
+status = "confirmed_fixed_crc_passed"
+verification = "A W-only model with payload 19674 retained zero attached-model payload and accepted duplicate case-insensitive names native/NATIVE; construction dropped owner metadata for W/nport/transformer-only and empty definitions."
+fix = "Lazy per-circuit compiled-instance registry retains all definitions, enforces unique names, preallocates replacement state, and charges shared model identity once. Four-argument circuit constructor compatibility preserved; ordinary circuits allocate no registry."
+reverify = "Initial 21 checks plus full SPICE/lines/coupled/Spectre/project/project-SPICE: 7 files, 9127 assertions passed. Final registry/copy/tight shared-model cap regression: 29 checks plus full SPICE/native model/project files, 4 files and 2144 assertions passed."
+
+[[candidates]]
+id = "floating_owned_geometry"
+status = "confirmed_fixed_crc_passed"
+verification = "Public 22-basis native FLOAT model omitted 1574 bytes of owned basis/mask/layer storage from payload 4176. Shared owned-geometry counter now explicitly visits basis, sheets, vias, volumes, bricks and layers before bridge staging and retained solves."
+fix = "Reuse shared component base counter with a shared identity set; include source incidence/terminal/bridge/circuit data and bricks."
+reverify = "Fast 4-check geometry/alias/rejection test and full-only 9-check public FIX-pin cap/response test plus full native FLOAT and ordinary calibration files: 4 files, 200 assertions passed."
+
+[[candidates]]
+id = "floating_fix_pin_retained_results"
+status = "confirmed_fixed_crc_passed"
+verification = "Successful public FIX-pin probe: cap 2097152, model payload 4176, parent workspace 5544, forwarded feed budget 2087432 and retained EM 16272; forwarded allowance plus retained parent bytes totaled 2113424, exceeding the shared cap."
+fix = "Alias-aware tuple result counter deducts both retained EM and circuit arrays before FIX-pin feed characterization; shared walker now handles CircuitResult through core's separate fix."
+reverify = "Tight public phase budget now rejects; sufficient cap preserves S/Y. Full-only test 9 checks, fast helper 4 checks, full FLOAT 171 and existing ordinary calibration 16 checks passed."
+
+[[candidates]]
+id = "odb_full_ascii_shift_literals"
+dimension = "domain and implementation"
+status = "confirmed_fixed_crc_passed"
+verification = "Current helper emitted raw $,%,+,/ even in Full ASCII mode; public ODB '+' barcode produced 47 narrow-unit extent instead of 63 and incorrect interior bar membership. Baseline direct mapping plus three public geometry assertions all failed. Primary Zint implementation of ISO16388 Table A.2 independently maps those four characters to /D,/E,/K,/O: https://github.com/zint/zint/blob/master/backend/code.c#L175-L189 . Literal '+A' previously emitted '+A' and therefore denotes lowercase a in Full ASCII decoding."
+fix = "Keep the basic Code39 pass-through behavior, but send the four shift literals through the existing ASCII pair mapping in Full ASCII mode."
+reverify = "New compact 12-check direct and public-render regression plus entire vendor records, fonts and legacy units files: 4 files, 399 assertions passed. Focused test cold 4.5 seconds including compilation; no scientific solve."
+
+[[candidates]]
+id = "geovar_diagonal_sbox_interference"
+status = "pending_native_oracle"
+verification = "Fresh body review: the moved-edge/SBOX check uses only axis-aligned bounding intervals; a diagonal segment can have an overlapping AABB while staying outside the open rectangle. Native renderer may deliberately apply the same conservative rule, so this is not a confirmed compatibility defect without actual engine or retained native evidence."
+
+[[candidates]]
+id = "artwork_scoped_mpfr_precision"
+status = "discarded"
+verification = "Installed minimum-compatible Julia 1.12.7 and Julia 1.13.1 both implement setprecision(f,BigFloat,...) with ScopedValue, so these do-blocks do not mutate another task's precision. Source boundary inspected in both installed base/mpfr.jl files."
+
+[[candidates]]
+id = "gerber_macro_exposure"
+status = "discarded"
+verification = "Exposure appears permissive at branch entry but a shared post-primitive validation explicitly rejects values outside 0/1."
+
+[[candidates]]
+id = "full_worker_shared_helpers"
+status = "confirmed_fixed_by_root_static_reverified"
+verification = "Fresh workers split synthetic SMD/FLOAT factory and retained SPICE wave helpers from consumers. Root extracted three exact helper bodies; all consumers now include them, and original 253 include order is preserved."

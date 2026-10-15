@@ -170,6 +170,8 @@ The same comprehensive suite is available through the manually triggered
 updates, and convergence or resource investigations.
 Full validation runs sequential groups in fresh Julia processes to release
 compiler state between groups; any failed group fails the full run.
+GitHub distributes those groups across six independent jobs. Every job must
+pass, while a local full run still executes all groups sequentially.
 
 Analytical and internal checks:
 

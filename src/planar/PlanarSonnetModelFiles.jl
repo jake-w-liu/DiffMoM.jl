@@ -603,7 +603,7 @@ function circuit_add_sonnet_files!(circuit::PlanarCircuit,files::SonnetComponent
         push!(maps,nodes)
     end
     refs=circuit.z0 isa AbstractArray ? copy(circuit.z0) : circuit.z0
-    staged=PlanarCircuit(circuit.nnodes,copy(circuit.ports),refs,copy(circuit.elements))
+    staged=_circuit_copy(circuit;z0=refs)
     for (binding,nodes) in zip(files.bindings,maps)
         grounded=[iszero(label) for label in binding.geometry_labels]
         # A fully grounded model reduces to the empty network — nothing

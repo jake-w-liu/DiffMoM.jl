@@ -1,0 +1,143 @@
+audit_date = "2026-10-15"
+base_revision = "dd2f0eb4df088a25b95e7ee2b97fe52454d1fcc6"
+status = "local radiation fixes verified; complete conformal/FFT validation pending fresh full run"
+scope = "Fresh planar scientific/numerical public-API, implementation, resource/ownership and performance audit. IO/network/calibration/extraction/vector-fit ownership is recorded separately."
+julia = "1.13.1"
+julia_threads = 4
+blas_threads = 1
+whole_repository_bug_free_claim = false
+global_optimization_claim = false
+full_body_review_completed = 14
+full_body_review_remaining = 11
+body_review_note = "Initial route/formula/test traces below are separate from complete source-body evidence. The per-file map records the explicit body recheck after the root requested completion evidence; pending files are not counted complete."
+
+[fresh_read_status]
+"src/planar/PlanarTypes.jl" = "complete body recheck;309 lines"
+"src/planar/PlanarBasis.jl" = "partial: basis ownership/trace/formula routes reviewed; remaining complete709-line body recheck pending"
+"src/planar/PlanarVias.jl" = "complete body recheck;452 lines"
+"src/planar/PlanarVolumes.jl" = "complete body recheck;347 lines"
+"src/planar/PlanarImmittance.jl" = "complete body recheck;356 lines"
+"src/planar/PlanarGreens.jl" = "partial: modal formulas/dispatch reviewed; remaining complete814-line body recheck pending"
+"src/planar/PlanarSolve.jl" = "partial: solve/ownership/resource acceptance routes reviewed; remaining complete775-line body recheck pending"
+"src/planar/PlanarFFTAssembly.jl" = "complete body recheck;219 lines"
+"src/planar/PlanarUFFT.jl" = "partial: operator/alias/modal workspace routes reviewed; remaining complete693-line body recheck pending"
+"src/planar/PlanarTriangleTransforms.jl" = "complete body recheck;209 lines"
+"src/planar/PlanarConformal.jl" = "partial: constructor/current/port/weights routes reviewed; remaining complete608-line body recheck pending"
+"src/planar/PlanarConformalMeshing.jl" = "complete body recheck;180 lines"
+"src/planar/PlanarConformalUFFT.jl" = "complete body recheck;329 lines"
+"src/planar/PlanarConformalProjection.jl" = "partial: provider/preflight/residual routes reviewed; remaining complete687-line body recheck pending"
+"src/planar/PlanarConformalMultiProjection.jl" = "partial: bounded operator/correction routes reviewed; remaining complete385-line body recheck pending"
+"src/planar/PlanarConformalDefect.jl" = "partial: original-action defect/correction routes reviewed; remaining complete366-line body recheck pending"
+"src/planar/PlanarHybrid.jl" = "complete body recheck;227 lines"
+"src/planar/PlanarHybridUFFT.jl" = "complete body recheck;305 lines"
+"src/planar/PlanarConductorLoss.jl" = "complete body recheck;163 lines"
+"src/planar/PlanarSurface.jl" = "complete body recheck;170 lines; confirmed Huray numerator overflow awaiting freeze release"
+"src/planar/PlanarMetalModel.jl" = "complete body recheck;292 lines"
+"src/planar/PlanarAdjoint.jl" = "partial: gradient contractions and derivatives reviewed; remaining complete745-line body recheck pending"
+"src/planar/PlanarSweep.jl" = "partial: sweep/resonance public contracts reviewed; remaining complete574-line body recheck pending"
+"src/planar/PlanarCurrents.jl" = "complete body recheck;335 lines"
+"src/planar/PlanarRadiation.jl" = "partial body recheck1:330 read,331:614 pending; earlier range/formula/metric CRC recorded below"
+
+[[surface]]
+files = ["src/planar/PlanarTypes.jl", "src/planar/PlanarBasis.jl", "src/planar/PlanarVias.jl", "src/planar/PlanarVolumes.jl"]
+domain = "Re-derived sheet/via/volume/brick trace weights, current units, TE/TM cutoff states and constitutive/loss signs; original modal, BVP, anisotropic, brick and gradient comparisons passed."
+implementation = "Traced constructor validation, masks/connections, port claiming, physical element indexing and retained coefficient mapping."
+resources = "Owned operation scratch; level/index validation and checked array-payload rejection covered by original core/bulk/volume/brick tests."
+performance = "Modal weight/cascade reuse is bounded by declared mode blocks; no new optimization claim beyond measured/tested paths."
+evidence = ["test_planar.jl", "test_planar_core.jl", "test_planar_bulk_loss.jl", "test_planar_volume_ports.jl", "test_planar_axial_profile.jl", "test_planar_axial_volume_wall.jl", "test_planar_dielectric_bricks.jl"]
+status = "fresh local original tests passed"
+
+[[surface]]
+files = ["src/planar/PlanarImmittance.jl", "src/planar/PlanarGreens.jl", "src/planar/PlanarSolve.jl", "src/planar/PlanarFFTAssembly.jl", "src/planar/PlanarUFFT.jl"]
+domain = "TE/TM parity, degeneracy, cutoff even series, evanescent scaling, reciprocity and voltage/current extraction traced against independent tanh/modal references."
+implementation = "Traced dense/modal/FFT dispatch, retained matrix/factor ownership, independent residual acceptance and workspace-alias contracts."
+resources = "Dense preflight, block extremes, retained versus streamed kernels and caller-owned output rejection tested."
+performance = "Original bounded dense-workspace tests passed; full exact iterative FFT/folded-spectrum allocation suites remain assigned to the fresh full run."
+evidence = ["test_planar.jl", "test_planar_core.jl", "test_planar_fft_dense_workspace.jl", "test_planar_fft_modal_blocks.jl", "test_planar_fft_preflight.jl", "test_planar_dense_group_audit.jl", "test_planar_solver_audit.jl"]
+status = "listed local tests passed; full UFFT/folded suites pending"
+
+[[surface]]
+files = ["src/planar/PlanarTriangleTransforms.jl", "src/planar/PlanarConformal.jl", "src/planar/PlanarConformalMeshing.jl", "src/planar/PlanarConformalUFFT.jl", "src/planar/PlanarConformalProjection.jl", "src/planar/PlanarConformalMultiProjection.jl", "src/planar/PlanarConformalDefect.jl", "src/planar/PlanarHybrid.jl", "src/planar/PlanarHybridUFFT.jl"]
+domain = "Traced analytic simplex moments, RWG edge orientation/charge incidence, finite TE/TM sums, mixed bulk cross reactions and original-action defect residual."
+implementation = "Traced polygon/triangle validity, physical lattice checks, source traces, provider preflight, bounded correction failures and output coefficient mappings. Basis groups are contiguous because constructor keys sort by interface and edge."
+resources = "Reviewed per-operation FFT buffers, alias rejection, sparse correction storage, checked growth and provider budgets. Separate operator instances are explicitly required for concurrent mutating FFT calls."
+performance = "Reviewed modal batching, shared analytic weight tables, conjugate sign storage, bounded blocks and zero-allocation operator tests. Fresh full conformal/UFFT/defect/multilevel/allocation suites are still pending."
+evidence = ["test_planar_radiation.jl", "test_planar_hybrid_radiation.jl"]
+status = "source review and radiation integration passed; complete numerical/resource suites pending full run"
+
+[[surface]]
+files = ["src/planar/PlanarConductorLoss.jl", "src/planar/PlanarSurface.jl", "src/planar/PlanarMetalModel.jl", "src/planar/PlanarAdjoint.jl", "src/planar/PlanarSweep.jl"]
+domain = "Re-derived peak-phasor/passive loss signs, skin-depth/surface equations, gradient contractions and resonance characteristic state; current tests compare analytic, dual and finite-difference routes."
+implementation = "Reviewed parameter validity, finite Float64 narrowing, adaptive sweep response storage, distinct frequency grid and bounded resonance/root acceptance. Sweep convergence is explicitly only an interpolation estimate."
+resources = "Precision/rounding do-blocks are task-local ScopedValues in supported Julia 1.12/1.13 Base; the global-state candidate was discarded. Reviewed forward/adjoint retained budgets and ownership."
+performance = "Ordinary kernels retain Float64 fast paths; rare widened arithmetic has explicit budgets. Fresh complete wide-gradient and resonance-regression files remain pending full run."
+evidence = ["test_planar.jl", "test_planar_core.jl", "test_planar_bulk_loss.jl", "test_planar_metalmodel.jl", "test_planar_conductor_surface_range.jl", "test_planar_surface_roughness_range.jl", "test_planar_axial_profile.jl", "test_planar_dielectric_bricks.jl"]
+status = "listed local original tests passed; remaining regressions pending full run"
+
+[[surface]]
+files = ["src/planar/PlanarCurrents.jl", "src/planar/PlanarRadiation.jl"]
+domain = "Traced physical current units, axial profile moments, Lorentz reciprocity, image phases, normal/grazing limits, polarization ellipses and solid-angle power integration. Confirmed range/cancellation bugs were reproduced and fixed."
+implementation = "Traced source/coefficient mappings for dense, calibrated, contracted, conformal and hybrid results; finite negative accepted power now rejects under large-voltage/tiny-admittance scaling."
+resources = "Existing aggregate reservations retained; new tolerance fallback owns scalar values only; metrics returns five numerical matrices without former intermediate Stokes arrays."
+performance = "Measured 100x100 metrics against the exact pre-fix method loaded from base revision: 487.787 to 295.579 microseconds; 1121556 to 560755 cumulative allocated bytes per call."
+evidence = ["test_planar_terminal_current_ranges.jl", "test_planar_public_power_product_range.jl", "test_planar_radiation_power_product_range.jl", "test_planar_finite_accepted_power.jl", "test_planar_radiation_metrics_range.jl", "test_planar_radiation.jl", "test_planar_radiation_range.jl", "test_planar_normal_radiation.jl", "test_planar_weighted_radiation_boundaries.jl", "test_planar_hybrid_radiation.jl"]
+status = "local targeted CRC passed; receiving-moment ForwardDiff suite pending proper test sandbox/full run"
+
+[[finding]]
+candidate = "Polarization metrics lose finite ellipse axes through field squaring or Stokes subtraction. Circular sums and normalized powers can overflow before finite final division."
+dimension = "domain correctness, numerical range, memory, performance"
+verification = "Before: axis ratio 2 at amplitudes 1e-200 and 1e155 returned NaN; ratio 1e10 at unit amplitude returned Inf; circular_plus(1e308,-1e308im) returned Inf although sqrt(2)*1e308 fits."
+status = "fixed and locally reverified"
+fix = "Scaled 2x2 polarization singular-value invariant with compensated determinant; range-safe circular and normalized-power products; removal of intermediate Stokes arrays."
+reverify = "27 concise public regression checks including common phase, real rotation, 3 amplitudes, 2 ellipse ratios, CSV, full radiated power and coherent result excitation; original metrics/radiation integration checks also passed."
+
+[[finding]]
+candidate = "Radiated-power azimuth sum overflows before multiplying by its solid-angle weight; relative-change eps floor suppresses actual low-power quadrature error."
+dimension = "domain correctness, numerical range"
+verification = "Before: physical 4x4 sheet currents scaled to finite 8.988465674311579e307 W returned Inf at ntheta=2,nphi=48. Direct formula proves fixed eps floor breaks scale invariance below eps W."
+status = "fixed and locally reverified"
+fix = "Apply each positive solid-angle weight before summation; normalize relative change to actual positive power and handle exactly zero power separately."
+reverify = "Finite large-power result, 1e-12 power scaling and invariant relative-change checks passed; original full-sphere/analytic radiation tests passed."
+
+[[finding]]
+candidate = "Accepted-power roundoff tolerance overflows and admits finite negative accepted power."
+dimension = "domain correctness, implementation boundary"
+verification = "Before: coherent retained source equation had residual 0, Y=-9.999999999999998e-201 S and v=1e200 V. Physical power=-4.999999999999999e199 W, but tolerance=Inf and excitation accepted_power=nothing."
+status = "fixed and locally reverified"
+fix = "Preserve ordinary fast tolerance; recover the same norm-based bound with component scaling and exponent-balanced scalar products on range failure."
+reverify = "Negative public far-field excitation rejects, positive counterpart remains finite, max_bytes rejection preserved, original 15 accepted-power checks and 15 hybrid-radiation checks pass; independent 512-bit oracle passed 12 signed/complex exponent variants."
+
+[local_evidence]
+driver = "julia +1.13.1 --project=. --startup-file=no --threads=4 --heap-size-hint=600M <temp>/diffmom-planar-physics-reset-driver.jl <listed test files>"
+log_directory = "C:/Users/User/AppData/Local/Temp"
+modal_log = "diffmom-planar-physics-reset-modal.log"
+modal_completed_files = ["test_planar.jl", "test_planar_core.jl"]
+modal_checks = [4342, 306]
+modal_note = "Driver then loaded modal_blocks before its dense_workspace fixture and failed. Completed files are independently recorded; corrected order passed in modal-remaining."
+modal_remaining_log = "diffmom-planar-physics-reset-modal-remaining.log"
+modal_remaining_files = ["test_planar_fft_dense_workspace.jl", "test_planar_fft_modal_blocks.jl", "test_planar_fft_preflight.jl", "test_planar_dense_group_audit.jl", "test_planar_solver_audit.jl", "test_planar_bulk_loss.jl", "test_planar_volume_ports.jl", "test_planar_metalmodel.jl", "test_planar_conductor_surface_range.jl", "test_planar_surface_roughness_range.jl", "test_planar_axial_profile.jl", "test_planar_axial_volume_wall.jl", "test_planar_dielectric_bricks.jl"]
+modal_remaining_checks = [43, 71, 18, 24, 14, 281, 19, 52, 906, 91, 49, 81, 43]
+modal_remaining_peak_rss_bytes = 757878784
+tail_log = "diffmom-planar-physics-reset-tails.log"
+tail_files = ["test_planar_terminal_current_ranges.jl", "test_planar_public_power_product_range.jl", "test_planar_radiation_power_product_range.jl", "test_planar_finite_accepted_power.jl"]
+tail_checks = [95, 58, 15, 15]
+radiation_stage_one_log = "diffmom-planar-physics-reset-radiation-regression.log"
+radiation_stage_one_files = ["test_planar_radiation.jl", "test_planar_radiation_range.jl", "test_planar_normal_radiation.jl", "test_planar_weighted_radiation_boundaries.jl"]
+radiation_stage_one_checks = [106, 13, 120, 180]
+radiation_stage_one_note = "After metrics/quadrature fix, before later tolerance fix. Receiving-moment test could not import ForwardDiff under bare root project; not counted as passed."
+radiation_final_log = "diffmom-planar-physics-reset-radiation-final.log"
+radiation_final_files = ["test_planar_radiation_metrics_range.jl", "test_planar_finite_accepted_power.jl", "test_planar_hybrid_radiation.jl"]
+radiation_final_checks = [27, 15, 15]
+radiation_final_peak_rss_bytes = 616267776
+benchmark_log = "diffmom-planar-physics-reset-metrics-benchmark.log"
+benchmark_reference = "Exact pre-fix planar_radiation_metrics loaded from base_revision into a separate module; ordinary outputs compared before timing."
+benchmark_shape = [100, 100]
+benchmark_old_seconds = 0.000487787
+benchmark_new_seconds = 0.000295579
+benchmark_old_allocated_bytes = 1121556
+benchmark_new_allocated_bytes = 560755
+resource_limit_note = "Heap hints are not hard memory caps. Sys.maxrss reports process peak; Julia allocation counts are cumulative and include compilation in test timings. One separate probe hit LLVM OOM under simultaneous host pressure; it is not a passing test."
+
+[pending]
+full_validation = "Fresh end-to-end process-isolated full run, including conformal/UFFT/folded/defect/multilevel/wide-current/receiving-moment tests and dependency/platform boundaries."
+optimization = "No universal optimum is asserted. Domain scaling/peak-memory and all public workloads must be represented by root audit evidence before any bounded optimization verdict."

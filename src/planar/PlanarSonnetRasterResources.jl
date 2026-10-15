@@ -167,6 +167,11 @@ end
 # The shared walker excludes borrowed problems, deduplicates buffers and
 # counts owned MPFR components at their stored precision for dense recovery.
 _sonnet_retained_solve_payload(result)=_subdivision_retained_payload(result)
+function _sonnet_retained_solve_payload(results::Tuple)
+    seen=Base.IdSet{Any}()
+    return _checked_payload_sum("native retained solve results",
+        (_subdivision_retained_payload(result,seen) for result in results)...)
+end
 
 function _sonnet_child_solve_budget(result,reserve,limit)
     live=_checked_payload_sum("native retained solve and calibration",reserve,

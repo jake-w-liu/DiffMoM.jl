@@ -93,6 +93,54 @@ function _unwhiten_error_columns(lower, permutation, tau, columns)
     return _assert_finite_linear_array(output, "conditional coefficients")
 end
 
+function _preflight_conditioning_range_work(m, q, input_bytes, limit)
+    scalar_bytes = cld(_LOCAL_MASS_FALLBACK_PRECISION, 8sizeof(UInt)) *
+                   sizeof(UInt) + 8sizeof(UInt)
+    wide = _checked_array_payload_bytes(UInt8, 2scalar_bytes,
+        3BigInt(m) * q + 2BigInt(q)^2 + 8BigInt(m) + 12BigInt(q) + 64)
+    _enforce_payload_limit(
+        _checked_payload_sum("wide residual conditioning", input_bytes,
+                             _conditioning_work_bytes(m, q), wide),
+        limit, "wide residual conditioning", "max_work_bytes")
+end
+
+function _conditioning_range_projection(
+        left, right, values, t, tolerance, m, q, input_bytes, limit)
+    _preflight_conditioning_range_work(m, q, input_bytes, limit)
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        setrounding(BigFloat, RoundNearest) do
+            basis = Complex{BigFloat}.(left)
+            observations = Complex{BigFloat}.(t)
+            data = adjoint(basis) * observations
+            support = norm(observations - basis * data)
+            support <= BigFloat(tolerance) * norm(observations) ||
+                throw(ArgumentError("observations are inconsistent with the numerical information rank"))
+            latent = ComplexF64.(Complex{BigFloat}.(right) *
+                                 (data ./ BigFloat.(values)))
+            _assert_finite_linear_array(latent, "conditional latent mean")
+            return latent, Float64(support)
+        end
+    end
+end
+
+function _conditioning_range_residual(
+        v, mean, t, tolerance, m, q, input_bytes, limit)
+    _preflight_conditioning_range_work(m, q, input_bytes, limit)
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        setrounding(BigFloat, RoundNearest) do
+            information = Complex{BigFloat}.(v)
+            coefficients = Complex{BigFloat}.(mean)
+            observations = Complex{BigFloat}.(t)
+            residual = norm(information * coefficients - observations)
+            bound = BigFloat(tolerance) *
+                    max(norm(observations), norm(information) * norm(coefficients))
+            residual <= bound ||
+                throw(ArgumentError("conditional mean fails the observation equations"))
+            return Float64(residual)
+        end
+    end
+end
+
 """
     condition_error_observations(mass, V, t; tau=1.0,
         rank_rtol=64eps(Float64), consistency_rtol=1e-10,
@@ -130,8 +178,9 @@ function condition_error_observations(
         throw(ArgumentError("tau must be finite and positive"))
     all(tol -> isfinite(tol) && 0 < tol < 1, (rank_tol, consistency_tol)) ||
         throw(ArgumentError("conditioning tolerances must lie strictly between zero and one"))
+    input_bytes = Base.summarysize((mass, information, observations))
     _enforce_payload_limit(
-        _checked_payload_sum("conditioning", Base.summarysize((mass, information, observations)),
+        _checked_payload_sum("conditioning", input_bytes,
                              _conditioning_work_bytes(m, q)),
         limit, "residual conditioning", "max_work_bytes")
     stored_mass = SparseMatrixCSC{ComplexF64,Int}(sparse(mass))
@@ -158,17 +207,33 @@ function condition_error_observations(
         right = Matrix(adjoint(decomposition.Vt[1:rank_value, :]))
         data = adjoint(left) * t
         support_error = norm(t - left * data)
-        support_error <= consistency_tol * norm(t) ||
-            throw(ArgumentError("observations are inconsistent with the numerical information rank"))
-        if rank_value > 0
-            latent .= right * (data ./ values[1:rank_value])
+        observation_norm = norm(t)
+        if isfinite(support_error) && isfinite(observation_norm)
+            support_error <= consistency_tol * observation_norm ||
+                throw(ArgumentError("observations are inconsistent with the numerical information rank"))
+            if rank_value > 0
+                latent .= right * (data ./ values[1:rank_value])
+            end
+        end
+        # Infinity is not a consistency certificate. Recompute the coupled
+        # projection/division before narrowing when finite inputs overflow
+        # an intermediate norm, SVD coordinate, or latent coefficient.
+        if !isfinite(support_error) || !isfinite(observation_norm) || !all(isfinite, latent)
+            latent, support_error = _conditioning_range_projection(left, right,
+                view(values, 1:rank_value), t, consistency_tol, m, q, input_bytes, limit)
         end
     end
     mean = vec(_unwhiten_error_columns(
         lower, permutation, scale, reshape(latent, m, 1)))
     residual = norm(v * mean - t)
-    residual <= consistency_tol * max(norm(t), norm(v) * norm(mean)) ||
-        throw(ArgumentError("conditional mean fails the observation equations"))
+    residual_bound = consistency_tol * max(norm(t), norm(v) * norm(mean))
+    if isfinite(residual) && isfinite(residual_bound)
+        residual <= residual_bound ||
+            throw(ArgumentError("conditional mean fails the observation equations"))
+    else
+        residual = _conditioning_range_residual(
+            v, mean, t, consistency_tol, m, q, input_bytes, limit)
+    end
     diagnostics = (
         supplied_rows=q, effective_rank=rank_value,
         rank_threshold=threshold, singular_values=values,
@@ -457,8 +522,67 @@ function _quadratic_output_bilinear(left, weight, right, component, ::Type{T}) w
         return _bilinear_component_bigfloat(left, weight, right, component, T,
             "quadratic output moment")
     end
-    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
-        _accumulate_bilinear_component_bigfloat(left, weight, right, component)
+    span=_local_mass_dyadic_span((value for array in (left,weight,right) for value in array))
+    bits=span===nothing ? max(2*_LOCAL_MASS_FALLBACK_PRECISION,precision(BigFloat)) :
+        _local_mass_dyadic_precision(3*(BigInt(span[2])+1)+1,3*BigInt(span[1]),
+            8*BigInt(max(length(left),1))*max(length(right),1))
+    return setprecision(BigFloat,bits) do
+        setrounding(BigFloat,RoundNearest) do
+            _accumulate_bilinear_component_bigfloat(left, weight, right, component)
+        end
+    end
+end
+
+function _quadratic_output_moment_precision(outputs,weight)
+    values=(value for array in (outputs.square_root,outputs.mean,weight) for value in array)
+    span=_local_mass_dyadic_span(values)
+    # Variance expands into W^2*F^4 and W^2*mu^2*F^2. Six original
+    # dyadic factors and the reduction carry suffice for every intermediate,
+    # so cancellation is retained before the one final output conversion.
+    # Nondyadic Number inputs retain a finite approximation budget.
+    span===nothing && return max(2*_LOCAL_MASS_FALLBACK_PRECISION,precision(BigFloat))
+    p,m=size(outputs.square_root)
+    terms=64*BigInt(max(p,1))^4*(BigInt(m)+1)^2
+    return _local_mass_dyadic_precision(
+        6*(BigInt(span[2])+1)+2,6*BigInt(span[1]),terms)
+end
+
+function _quadratic_output_wide_factor_moments(outputs,weight,::Type{T}) where {T}
+    p,m=size(outputs.square_root)
+    bits=_quadratic_output_moment_precision(outputs,weight)
+    scalar_bytes=cld(BigInt(bits),8sizeof(UInt))*sizeof(UInt)+8sizeof(UInt)
+    # Three p-by-p wide matrices, linear column/vector work, and scalar
+    # temporaries. The latent dimension never produces an m-by-m array.
+    work=_checked_array_payload_bytes(UInt8,2scalar_bytes,3BigInt(p)^2+8BigInt(p)+64)
+    _enforce_payload_limit(work,_default_max_dense_payload_bytes(),
+        "wide quadratic moment workspace","available memory")
+    return setprecision(BigFloat,bits) do
+        setrounding(BigFloat,RoundNearest) do
+            covariance=zeros(Complex{BigFloat},p,p)
+            column=Vector{Complex{BigFloat}}(undef,p)
+            for latent in 1:m
+                for row in 1:p
+                    column[row]=Complex{BigFloat}(outputs.square_root[row,latent])
+                end
+                for j in 1:p,i in 1:j
+                    covariance[i,j]+=column[i]*conj(column[j])
+                end
+            end
+            for j in 1:p,i in j+1:p
+                covariance[i,j]=conj(covariance[j,i])
+            end
+            w=Complex{BigFloat}.(weight)
+            mean=Complex{BigFloat}.(outputs.mean)
+            product=w*covariance
+            weighted_mean=w*mean
+            expected=real(dot(mean,weighted_mean)+LinearAlgebra.tr(product))
+            # Contract the trace directly instead of retaining product^2.
+            trace_square=sum(product[i,j]*product[j,i] for i in 1:p,j in 1:p)
+            shifted=sum(conj(weighted_mean[i])*covariance[i,j]*weighted_mean[j]
+                for i in 1:p,j in 1:p)
+            variance=real(trace_square)+2real(shifted)
+            return (mean=convert(T,expected),variance=convert(T,variance))
+        end
     end
 end
 
@@ -475,13 +599,7 @@ function _quadratic_output_factor_moments(outputs, weight)
         return (mean=expected, variance=zero(expected))
     end
     p, m = size(factor)
-    if m > p
-        # The working Gaussian is defined by this shared factor. Compress
-        # only its latent coordinates, retaining every singular direction,
-        # before forming a quadratic weight; never allocate an m-by-m array.
-        decomposition = LinearAlgebra.svd(factor; full=false)
-        factor = decomposition.U .* transpose(decomposition.S)
-    end
+    m>p && return _quadratic_output_wide_factor_moments(outputs,weight,real_type)
     rank = size(factor, 2)
     latent_weight = Matrix{Complex{real_type}}(undef, rank, rank)
     latent_mean = Vector{Complex{real_type}}(undef, rank)
@@ -525,15 +643,17 @@ function _quadratic_output_factor_mean(outputs, weight, ::Type{T}) where {T}
         end
         return _ieee_bilinear_finish(accumulator, "quadratic output mean")
     end
-    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
-        expected = _accumulate_bilinear_component_bigfloat(
-            outputs.mean, weight, outputs.mean, Val(:real))
-        for column in axes(factor, 2)
-            values = view(factor, :, column)
-            expected += _accumulate_bilinear_component_bigfloat(
-                values, weight, values, Val(:real))
+    return setprecision(BigFloat,_quadratic_output_moment_precision(outputs,weight)) do
+        setrounding(BigFloat,RoundNearest) do
+            expected = _accumulate_bilinear_component_bigfloat(
+                outputs.mean, weight, outputs.mean, Val(:real))
+            for column in axes(factor, 2)
+                values = view(factor, :, column)
+                expected += _accumulate_bilinear_component_bigfloat(
+                    values, weight, values, Val(:real))
+            end
+            convert(T, expected)
         end
-        convert(T, expected)
     end
 end
 

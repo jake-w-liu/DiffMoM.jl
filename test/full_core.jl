@@ -7556,10 +7556,19 @@ multi_incident_cancellation = make_multi_excitation([
     k_exc,
 ) == CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im)
 multi_incident_point = Vec3(0.0, 0.0, 1.0)
+multi_incident_reference = setprecision(BigFloat, 4672) do
+    value = ComplexF64(BigFloat(multi_farfield_maximum) *
+                       exp(complex(zero(BigFloat), -BigFloat(k_exc))))
+    CVec3(value, 0.0 + 0im, 0.0 + 0im)
+end
 @test DiffMoM._incident_electric_field(
-    multi_farfield, multi_incident_point, k_exc) ==
+    multi_farfield, multi_incident_point, k_exc) == multi_incident_reference
+# Coherent fields round after their complete sum; the standalone child
+# rounds its field first, so physical linearity allows those final rounding bits.
+@test DiffMoM._incident_electric_field(
+    multi_farfield, multi_incident_point, k_exc) ≈
     DiffMoM._incident_electric_field(
-        multi_farfield_children[1], multi_incident_point, k_exc)
+        multi_farfield_children[1], multi_incident_point, k_exc) rtol=4eps(Float64)
 
 large_phi_origin = 1.0e16
 large_phi_grid = [

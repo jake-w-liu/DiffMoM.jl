@@ -29,6 +29,76 @@ function _multi_exact_accumulator_bytes(N::Int)
     return Int(bytes)
 end
 
+# Wide analytical fields need not fit Float64 before their coherent weights
+# and cancellations. Their stored MPFR values are dyadics: track actual low
+# and high bits rather than assuming the Float64 product lattice still applies.
+function _source_dyadic_bounds(value::Number)
+    low, high = typemax(Int), typemin(Int)
+    for part in (real(value), imag(value))
+        isfinite(part) || throw(OverflowError("source contribution is non-finite"))
+        iszero(part) && continue
+        significand, shift, _ = Base.decompose(part)
+        low = min(low, shift + trailing_zeros(significand))
+        high = max(high, shift + ndigits(significand; base=2) - 1)
+    end
+    return high == typemin(Int) ? nothing : (low, high)
+end
+
+function _source_product_sum_precision(total, factors...)
+    low, high = 0, 0
+    for factor in factors
+        bounds = _source_dyadic_bounds(factor)
+        bounds === nothing && return 0
+        low = Base.checked_add(low, bounds[1])
+        high = Base.checked_add(high, bounds[2])
+    end
+    # Each complex multiplication doubles the number of real terms. The
+    # product magnitude and addition carries need at most two bits per factor.
+    high = Base.checked_add(high, 2length(factors))
+    previous = _source_dyadic_bounds(total)
+    if previous !== nothing
+        low = min(low, previous[1]); high = max(high, previous[2])
+    end
+    return max(64, Base.checked_add(Base.Checked.checked_sub(high,low),2))
+end
+
+function _source_exact_product(factors...)
+    bits = _source_product_sum_precision(zero(ComplexF64), factors...)
+    bits == 0 && return zero(Complex{BigFloat})
+    return setprecision(BigFloat,bits) do
+        prod(Complex{BigFloat}(factor) for factor in factors)
+    end
+end
+
+mutable struct _MultiSourceExactBudget
+    retained_bytes::Int
+    limit::Int
+end
+
+function _source_accumulator_row_bytes(bits::Int)
+    extra_limbs = cld(max(0,bits-_MULTI_SOURCE_EXACT_PRECISION),8sizeof(UInt))
+    return _checked_payload_sum("source accumulator row",_MULTI_EXACT_BYTES_PER_ENTRY,
+        _checked_array_payload_bytes(UInt,2,extra_limbs))
+end
+
+function _source_exact_add_product!(total,index,budget,factors...)
+    bits = _source_product_sum_precision(total[index], factors...)
+    bits == 0 && return nothing
+    previous_bits = max(precision(real(total[index])),precision(imag(total[index])))
+    if bits > previous_bits
+        additional = _source_accumulator_row_bytes(bits)-_source_accumulator_row_bytes(previous_bits)
+        requested = _checked_payload_sum("source exact accumulator",budget.retained_bytes,additional)
+        _enforce_payload_limit(requested,budget.limit,"source exact accumulator","max_exact_bytes")
+        budget.retained_bytes = requested
+    end
+    # Retain allocated precision as well as all meaningful bits; narrowing a
+    # row could make a later growth charge count the same storage twice.
+    total[index] = setprecision(BigFloat,max(bits,previous_bits)) do
+        total[index]+prod(Complex{BigFloat}(factor) for factor in factors)
+    end
+    return nothing
+end
+
 function _multiple_excitation_work_bytes(
         N::Int, M::Int, Nt::Int, Nq::Int, output_bytes::Int)
     return _multiple_excitation_profile_work_bytes(
@@ -860,10 +930,12 @@ end
     dipole::DipoleExcitation,
     rhat::Vec3,
     k::Float64,
-)
+    ::Val{wide}=Val(false),
+) where {wide}
     precision = max(
         _dipole_angular_precision(dipole.moment, rhat),
         _source_directional_phase_precision(k, rhat, dipole.position),
+        wide ? Base.precision(BigFloat) : 0,
     )
     return setprecision(BigFloat, precision) do
         direction = SVector{3,BigFloat}(
@@ -890,8 +962,9 @@ end
             direction[index] * BigFloat(dipole.position[index])
             for index in 1:3) / direction_norm
         phase = exp(Complex{BigFloat}(0, phase_argument))
-        return _finite_source_vector(
-            unphased * phase, "DipoleExcitation far field")
+        value = unphased * phase
+        return wide ? value :
+            _finite_source_vector(value, "DipoleExcitation far field")
     end
 end
 
@@ -1342,8 +1415,10 @@ end
     r::Vec3,
     pat::PatternFeedExcitation,
     k::Float64,
-)
-    precision = _source_radial_phase_precision(k, r, pat.phase_center)
+    ::Val{wide}=Val(false),
+) where {wide}
+    precision = max(_source_radial_phase_precision(k, r, pat.phase_center),
+                    wide ? Base.precision(BigFloat) : 0)
     return setprecision(BigFloat, precision) do
         displacement = SVector{3,BigFloat}(ntuple(
             component ->
@@ -1379,7 +1454,8 @@ end
                 phase / distance,
             3,
         ))
-        return _finite_source_vector(value, "pattern-feed incident field")
+        return wide ? value :
+            _finite_source_vector(value, "pattern-feed incident field")
     end
 end
 
@@ -2155,8 +2231,11 @@ end
     r::Vec3,
     dipole::DipoleExcitation,
     k::Float64,
-)
-    precision = _dipole_incident_exact_precision(r, dipole, k)
+    ::Val{wide}=Val(false),
+    source_moment=dipole.moment,
+) where {wide}
+    precision = max(_dipole_incident_exact_precision(r, dipole, k),
+                    wide ? Base.precision(BigFloat) : 0)
     return setprecision(BigFloat, precision) do
         displacement = SVector{3,BigFloat}(ntuple(
             component -> BigFloat(r[component]) -
@@ -2167,7 +2246,7 @@ end
         iszero(distance) && return zero(CVec3)
         direction = displacement / distance
         moment = SVector{3,Complex{BigFloat}}(ntuple(
-            component -> Complex{BigFloat}(dipole.moment[component]), 3))
+            component -> Complex{BigFloat}(source_moment[component]), 3))
         wavenumber = BigFloat(k)
         phase = exp(Complex{BigFloat}(0, -wavenumber * distance))
         value = if dipole.type == :electric
@@ -2187,7 +2266,8 @@ end
             error(
                 "Dipole type must be :electric or :magnetic, got $(dipole.type).")
         end
-        return _finite_source_vector(value, "dipole incident field")
+        return wide ? value :
+            _finite_source_vector(value, "dipole incident field")
     end
 end
 
@@ -2275,6 +2355,12 @@ function loop_incident_field(r::Vec3, loop::LoopExcitation)
 end
 
 @inline function _loop_incident_field_unchecked(r::Vec3, loop::LoopExcitation)
+    if _loop_scaling_requires_fallback(loop)
+        return setprecision(BigFloat,_MULTI_SOURCE_EXACT_PRECISION) do
+            _finite_source_vector(_multi_incident_electric_field_wide(loop,r,0.0),
+                                  "loop incident field")
+        end
+    end
     m = _loop_equivalent_moment(loop)
     dip = DipoleExcitation(loop.center, m, loop.normal, :magnetic, loop.frequency)
     return _dipole_incident_field_unchecked(r, dip)
@@ -2403,8 +2489,9 @@ end
         mono::MonopoleExcitation,
         k::Float64,
         intervals::Int,
-        max_exact_work::Int)
-    precision = _monopole_exact_precision(r, mono, k)
+        max_exact_work::Int, ::Val{wide}=Val(false)) where {wide}
+    precision = max(_monopole_exact_precision(r, mono, k),
+                    wide ? Base.precision(BigFloat) : 0)
     _monopole_exact_work_preflight(
         intervals, precision, max_exact_work)
     return setprecision(BigFloat, precision) do
@@ -2453,7 +2540,8 @@ end
             end
         end
         value = (step / 3) * total
-        return _finite_source_vector(value, "monopole incident field")
+        return wide ? value :
+            _finite_source_vector(value, "monopole incident field")
     end
 end
 
@@ -2688,18 +2776,64 @@ function _incident_electric_field(excitation::DeltaGapExcitation, r::Vec3, k)
     )
 end
 
+_multi_incident_electric_field_wide(excitation::AbstractExcitation, r::Vec3, k) =
+    _incident_electric_field(excitation, r, k)
+
+function _multi_incident_electric_field_wide(dipole::DipoleExcitation, r::Vec3, k)
+    c0 = inv(sqrt(_EPS0 * _MU0))
+    dipole_k = _frequency_to_wavenumber(dipole.frequency, c0, "DipoleExcitation")
+    return _dipole_incident_field_exact(r, dipole, dipole_k, Val(true))
+end
+
+function _multi_incident_electric_field_wide(loop::LoopExcitation, r::Vec3, k)
+    # Keep the physical loop moment wide too: I*pi*a^2 can overflow before
+    # the coherent source weight makes its final field representable.
+    moment = Complex{BigFloat}(loop.current) * BigFloat(pi) *
+             BigFloat(loop.radius)^2 * SVector{3,BigFloat}(loop.normal)
+    dipole = DipoleExcitation(loop.center, zero(CVec3), loop.normal,
+                              :magnetic, loop.frequency)
+    c0 = inv(sqrt(_EPS0 * _MU0))
+    dipole_k = _frequency_to_wavenumber(loop.frequency, c0, "LoopExcitation")
+    return _dipole_incident_field_exact(r, dipole, dipole_k, Val(true), moment)
+end
+
+function _multi_incident_electric_field_wide(mono::MonopoleExcitation, r::Vec3, k)
+    mono_k = _frequency_to_wavenumber(mono.frequency, _C0, "MonopoleExcitation")
+    mono.include_image && _monopole_below_ground_exact(r, mono, mono_k) &&
+        return zero(CVec3)
+    intervals = _monopole_simpson_interval_count(mono.height, mono_k,
+        mono.include_image ? 2.0 : 1.0, mono.include_image ? 128 : 64,
+        "monopole incident field")
+    return _monopole_incident_field_exact(r, mono, mono_k, intervals,
+                                         _MAX_MONOPOLE_EXACT_WORK, Val(true))
+end
+
+function _multi_incident_electric_field_wide(pat::PatternFeedExcitation, r::Vec3, k)
+    pattern_k = _frequency_to_wavenumber(pat.frequency, _C0, "PatternFeedExcitation")
+    return _pattern_feed_field_exact(r, pat, pattern_k, Val(true))
+end
+
+@inline _has_wide_incident_field(excitation::AbstractExcitation) = excitation isa Union{
+    DipoleExcitation,LoopExcitation,MonopoleExcitation,PatternFeedExcitation,MultiExcitation}
+
+_multi_incident_electric_field_wide(excitation::MultiExcitation, r::Vec3, k) =
+    _multi_incident_electric_field_exact(excitation, r, k, Val(true))
+
 @noinline function _multi_incident_electric_field_exact(
-        excitation::MultiExcitation, r::Vec3, k)
+        excitation::MultiExcitation, r::Vec3, k,
+        ::Val{wide}=Val(false)) where {wide}
     return setprecision(BigFloat, _MULTI_SOURCE_EXACT_PRECISION) do
         total = Complex{BigFloat}[
             zero(Complex{BigFloat}),
             zero(Complex{BigFloat}),
             zero(Complex{BigFloat}),
         ]
+        budget = _MultiSourceExactBudget(_multi_exact_accumulator_bytes(3),
+                                         _DEFAULT_MAX_MULTI_EXACT_BYTES)
         @inbounds for index in eachindex(
                 excitation.excitations, excitation.weights)
             child = try
-                _incident_electric_field(
+                _multi_incident_electric_field_wide(
                     excitation.excitations[index], r, k)
             catch err
                 error(
@@ -2708,13 +2842,12 @@ end
                     "incident-field evaluation: $(sprint(showerror, err))"
                 )
             end
-            weight = Complex{BigFloat}(excitation.weights[index])
             for component in 1:3
-                total[component] +=
-                    weight * Complex{BigFloat}(child[component])
+                _source_exact_add_product!(total,component,budget,
+                    excitation.weights[index],child[component])
             end
         end
-        return _finite_source_vector(
+        return wide ? total : _finite_source_vector(
             total, "compute_total_field MultiExcitation incident field")
     end
 end
@@ -2727,6 +2860,9 @@ function _incident_electric_field(excitation::MultiExcitation, r::Vec3, k)
         child = (try
             _incident_electric_field(exc, r, k)
         catch err
+            if err isa OverflowError && _has_wide_incident_field(exc)
+                return _multi_incident_electric_field_exact(excitation, r, k)
+            end
             error(
                 "compute_total_field: MultiExcitation child $i of type $(typeof(exc)) " *
                 "failed incident-field evaluation: $(sprint(showerror, err))"
@@ -3279,7 +3415,8 @@ end
 function assemble_imported_excitation(mesh::TriMesh, rwg::RWGData,
                                       imported::ImportedExcitation;
                                       quad_order::Int=3,
-                                      quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
+                                      quad_cache::Union{Nothing,ExcitationQuadCache}=nothing,
+                                      _coherent::Bool=false)
     quad_order_eff = _effective_quad_order(quad_order, imported.min_quad_order)
     N = rwg.nedges
     wq, quad_pts, areas = quad_cache === nothing ?
@@ -3306,15 +3443,29 @@ function assemble_imported_excitation(mesh::TriMesh, rwg::RWGData,
                 else
                     imported.eta_equiv * src
                 end
+                _coherent && !all(isfinite,Einc) && return nothing
                 Einc = _check_finite_cvec3(
                     Einc, "ImportedExcitation mapped electric field")
                 term_count += 1
-                _store_excitation_surface_term!(
-                    terms, primitives, term_count, fn, Einc, A, wq[q])
+                # Only owned numeric range failures request coherent recovery.
+                # Callback and callback-value validation errors above propagate
+                # directly, even for zero weights.
+                try
+                    _store_excitation_surface_term!(
+                        terms, primitives, term_count, fn, Einc, A, wq[q])
+                catch err
+                    _coherent && err isa OverflowError && return nothing
+                    rethrow()
+                end
             end
         end
-        v[n] = _excitation_surface_sum(
-            terms, primitives, term_count, n)
+        try
+            v[n] = _excitation_surface_sum(
+                terms, primitives, term_count, n)
+        catch err
+            _coherent && err isa OverflowError && return nothing
+            rethrow()
+        end
     end
 
     return v
@@ -3379,6 +3530,66 @@ end
     return false
 end
 
+# Coherent surface reactions must apply weights before narrowing either a
+# field, a quadrature term, or a child RHS. Stream into the one retained
+# accumulator rather than allocating a wide RHS for every nested child.
+function _accumulate_multi_assembly_exact!(total, budget, weight, mesh, rwg,
+        source::AbstractExcitation, quad_order, cache)
+    if source isa MultiExcitation
+        for (child, child_weight) in zip(source.excitations, source.weights)
+            _accumulate_multi_assembly_exact!(total,budget,
+                _source_exact_product(weight,child_weight), mesh, rwg,
+                child, quad_order, cache)
+        end
+        return nothing
+    elseif source isa DeltaGapExcitation
+        1 <= source.edge <= rwg.nedges || throw(ArgumentError("delta-gap edge is outside the RWG range"))
+        quotient = Complex{BigFloat}(source.voltage)/BigFloat(source.gap_length)
+        _source_exact_add_product!(total,source.edge,budget,weight,quotient)
+        return nothing
+    elseif source isa PortExcitation
+        all(edge -> 1 <= edge <= rwg.nedges, source.port_edges) ||
+            throw(ArgumentError("port edge is outside the RWG range"))
+        # Repeated edge labels have the same assignment semantics as assemble_port.
+        for edge in eachindex(total)
+            edge in source.port_edges || continue
+            quotient = Complex{BigFloat}(source.voltage)/BigFloat(rwg.len[edge])
+            _source_exact_add_product!(total,edge,budget,weight,quotient)
+        end
+        return nothing
+    end
+    order = source isa ImportedExcitation ?
+        _effective_quad_order(quad_order, source.min_quad_order) : quad_order
+    wq, points, areas = _quad_cache_for(cache, mesh, order)
+    for n in eachindex(total), triangle in (rwg.tplus[n], rwg.tminus[n]), q in eachindex(wq)
+        point = points[triangle][q]
+        basis = eval_rwg(rwg, n, point, triangle)
+        field = if source isa ImportedExcitation
+            supplied = _to_cvec3(source.source_func(point), "ImportedExcitation source function")
+            scale = source.kind == :electric_field ? one(Complex{BigFloat}) :
+                    Complex{BigFloat}(source.eta_equiv)
+            scale * SVector{3,Complex{BigFloat}}(supplied)
+        else
+            _multi_incident_electric_field_wide(source, point, 0.0)
+        end
+        for c in 1:3
+            _source_exact_add_product!(total,n,budget,weight,-2.0,wq[q],
+                areas[triangle],conj(basis[c]),field[c])
+        end
+    end
+    return nothing
+end
+
+@inline function _multi_assembly_source_requires_exact(source, weight)
+    if source isa DeltaGapExcitation
+        return _source_scaling_extreme_value(source.voltage) ||
+               _source_scaling_extreme_value(source.gap_length)
+    elseif source isa PortExcitation
+        return _source_scaling_extreme_value(source.voltage)
+    end
+    return false
+end
+
 @noinline function _assemble_multi_exact!(
         output::Vector{ComplexF64}, mesh::TriMesh, rwg::RWGData,
         multi::MultiExcitation, quad_order::Int,
@@ -3387,23 +3598,11 @@ end
     _enforce_payload_limit(
         required_bytes, max_exact_bytes,
         "MultiExcitation exact accumulator", "max_exact_bytes")
-    nested_exact_bytes = max(1, max_exact_bytes - required_bytes)
-
     return setprecision(BigFloat, _MULTI_SOURCE_EXACT_PRECISION) do
         total = [zero(Complex{BigFloat}) for _ in eachindex(output)]
-        @inbounds for index in eachindex(
-                multi.excitations, multi.weights)
-            child = assemble_excitation(
-                mesh, rwg, multi.excitations[index];
-                quad_order=quad_order,
-                quad_cache=cache,
-                max_exact_bytes=nested_exact_bytes)
-            weight = Complex{BigFloat}(multi.weights[index])
-            for entry in eachindex(total, child)
-                total[entry] +=
-                    weight * Complex{BigFloat}(child[entry])
-            end
-        end
+        budget = _MultiSourceExactBudget(required_bytes,max_exact_bytes)
+        _accumulate_multi_assembly_exact!(total,budget,one(Complex{BigFloat}),
+            mesh, rwg, multi, quad_order, cache)
         @inbounds for entry in eachindex(output, total)
             converted = ComplexF64(total[entry])
             isfinite(converted) ||
@@ -3430,11 +3629,32 @@ function assemble_multi(mesh::TriMesh, rwg::RWGData,
         _validated_resource_limit("max_exact_bytes", max_exact_bytes)
     v = zeros(ComplexF64, rwg.nedges)
     for (exc, w) in zip(multi.excitations, multi.weights)
-        child = assemble_excitation(
-            mesh, rwg, exc;
-            quad_order=quad_order,
-            quad_cache=cache,
-            max_exact_bytes=exact_byte_limit)
+        _multi_assembly_source_requires_exact(exc, w) &&
+            return _assemble_multi_exact!(v, mesh, rwg, multi, quad_order,
+                                          cache, exact_byte_limit)
+        child = try
+            if exc isa ImportedExcitation
+                _validate_mesh_rwg_pair(mesh,rwg)
+                _validate_excitation_model(exc)
+                assemble_imported_excitation(mesh,rwg,exc;quad_order=quad_order,
+                    quad_cache=cache,_coherent=true)
+            else
+                assemble_excitation(mesh, rwg, exc;quad_order=quad_order,
+                    quad_cache=cache,max_exact_bytes=exact_byte_limit)
+            end
+        catch err
+            if err isa OverflowError && _has_wide_incident_field(exc)
+                return _assemble_multi_exact!(v, mesh, rwg, multi, quad_order,
+                                              cache, exact_byte_limit)
+            end
+            rethrow()
+        end
+        child === nothing &&
+            return _assemble_multi_exact!(v, mesh, rwg, multi, quad_order,
+                                          cache, exact_byte_limit)
+        _source_scaling_extreme_value(w) &&
+            return _assemble_multi_exact!(v, mesh, rwg, multi, quad_order,
+                                          cache, exact_byte_limit)
         _multi_assembly_child_requires_exact(w, child, v) &&
             return _assemble_multi_exact!(
                 v, mesh, rwg, multi, quad_order, cache,

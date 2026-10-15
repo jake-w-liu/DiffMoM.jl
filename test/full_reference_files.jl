@@ -1,4 +1,12 @@
 # Reference files retain their original execution order.
+function full_reference_groups(;group_size=8)
+    group_size>0 || throw(ArgumentError("full-validation group size must be positive"))
+    split_files(files)=[files[first:min(first+group_size-1,length(files))]
+        for first in 1:group_size:length(files)]
+    vcat(split_files(FULL_REFERENCE_BEFORE_CORE),[["full_core.jl"]],
+        split_files(FULL_REFERENCE_AFTER_CORE))
+end
+
 const FULL_REFERENCE_BEFORE_CORE = [
     "test_planar.jl",
     "test_payload_sum.jl",
@@ -201,6 +209,8 @@ const FULL_REFERENCE_BEFORE_CORE = [
 const FULL_REFERENCE_AFTER_CORE = [
     "test_periodic_topology.jl",
     "test_mom2d.jl",
+    "test_vie2d_large_self_phase.jl",
+    "test_surface_sie_weighted_range.jl",
     "test_material_models3d.jl",
     "test_mom3d.jl",
     "test_mom3d_adjoint.jl",
@@ -258,5 +268,21 @@ const FULL_REFERENCE_AFTER_CORE = [
     "test_planar_rational_fit_preflight.jl",
     "test_planar_radiation_metrics_range.jl",
     "test_quadratic_output_mean_cancellation.jl",
+    "test_quadratic_output_wide_variance.jl",
+    "test_conditioning_observation_range.jl",
+    "test_wideband_debye_range.jl",
+    "test_fft_dda_scaled_source_range.jl",
+    "test_dda_output_cancellation.jl",
+    "test_weighted_source_range.jl",
+    "test_planar_geometry_brick_preservation.jl",
+    "test_planar_accepted_power_cancellation.jl",
     "test_aca_zero_pivots.jl",
+    "test_po_phase_resources.jl",
+    "test_planar_project_shared_nodes.jl",
+    "test_planar_spice_w_psd_scale.jl",
+    "test_planar_calibration_block_range.jl",
+    "test_planar_spice_instance_provenance.jl",
+    "test_planar_sonnet_floating_budget.jl",
+    "test_planar_sonnet_floating_budget_full.jl",
+    "test_planar_odb_full_ascii.jl",
 ]

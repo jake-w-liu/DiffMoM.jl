@@ -1,0 +1,102 @@
+schema_version = 1
+owner = "root"
+audit_date = "2026-10-15"
+base_revision = "dd2f0eb4df088a25b95e7ee2b97fe52454d1fcc6"
+status = "active; full validation, outstanding fixes and final independent pass pending"
+whole_repository_bug_free_claim = false
+global_optimization_claim = false
+independent_source_review = "fast_independent.toml"
+
+[[surface]]
+files = ["src/DiffMoM.jl", "Project.toml", ".github/workflows/ci.yml", ".github/workflows/full-validation.yml", "test/runtests.jl", "test/full_validation.jl", "test/full_validation_worker.jl", "test/full_reference_files.jl"]
+domain = "Loader and test dispatch have no independent physical formula. Original scientific cases are retained."
+implementation = "Reviewed include order, Julia/dependency compatibility, focused/full dispatch, child project/thread propagation and failure propagation."
+resources = "Sequential full-validation process groups release compiler state. One-process predecessors exhausted host/compiler memory."
+performance = "Focused default remains separate from native/convergence/stress validation; process startup affects full mode only."
+verification = "Original 253 includes reconstructed in the same order; original core assertions preserved; three shared fixture bodies extracted verbatim and independently reviewed. New worker passed three files/74 checks. Full orchestration pending."
+
+[[surface]]
+files = ["src/fast/ClusterTree.jl", "src/fast/Octree.jl", "src/fast/ACA.jl", "src/fast/MLFMA.jl"]
+domain = "Root traced tree partition and interaction construction, ACA pivots, forward/adjoint conventions, spherical recurrence, translation and filtering. Independent geometric ACA audit found zero-pivot and unsafe-index bugs, now fixed."
+implementation = "Public indexing/dimensions, alias handling, alpha/beta products and shared-workspace finally/unlock paths reviewed independently."
+resources = "Setup/storage/work preflight, operator ownership, exponent-band and exact-row scratch limits traced."
+performance = "Fresh warmed 176/736-RWG forward/adjoint ACA and MLFMA products allocated zero bytes. Representative timings and scope are recorded in data/reset_hotpath_resources.toml."
+verification = "Exact sphere optimizer and targeted ACA checks passed; complete original fast-method sections pending full validation."
+
+[[surface]]
+files = ["src/postprocessing/FarField.jl", "src/postprocessing/NearField.jl", "src/postprocessing/Diagnostics.jl", "src/postprocessing/Mie.jl", "src/postprocessing/PeriodicMetrics.jl"]
+domain = "Transverse fields, phase signs, mixed potentials/singularity subtraction, compensated power, Floquet flux and Mie exceptional-scale routes traced."
+implementation = "Public shape/finite-input/mask/grid/normalization checks reviewed. Confirmed weighted-source child conversion failure is under repair."
+resources = "Observation and triangle caches, bounded exact retries and precision limits traced. BigFloat projected-power bounds now use stored significand/exponent."
+performance = "Stored 256-bit value at exponent -1000000: bound allocations fell from 501032 to 224 bytes; exponent -100 fell from 960 to 224 bytes. Ordinary IEEE power path unchanged."
+verification = "Six rational/wide-exponent projected-power checks passed; original full-domain/range/concurrency checks pending full validation."
+
+[[surface]]
+files = ["src/postprocessing/PhysicalOptics.jl", "src/postprocessing/PTD.jl", "src/postprocessing/Visualization.jl"]
+domain = "PO illumination/current units/triangle phase integral, coherent PO/PTD fields, explicit half-plane restriction, fringe conventions and geometric extents reviewed. Approximation limitations remain explicit."
+implementation = "Mesh/edge validation, deterministic ordering, supported-wedge rejection, field component ownership and plot/export routes traced."
+resources = "Aggregate raw arrays and bounded exact-direction retries reviewed. Profiling found 73728 avoidable 32-byte boxes in a 128-triangle/72-look PO run."
+performance = "Canonical phase vertices now use three lexicographic compare/swap steps. Fresh 128-triangle/72-look PO: 4.04 to 0.653 ms and 2448141 to 88829 bytes; 32-triangle PO: 1.03 to 0.171 ms and 617637 to 27781 bytes. PTD shares the phase improvement: 128-triangle 5.53 to 2.06 ms, 4857238 to 2498070 bytes."
+verification = "21 independent simplex-quadrature/permutation/allocation checks passed. Original PO/PTD section passed 60 checks plus its original assertions; peak RSS 551657472 bytes."
+
+[[surface]]
+files = ["validation/pn3d/study_analysis.jl", "validation/pn3d/study_numerical_checks.jl", "validation/tests/test_validation_reports.py", "validation/tests/test_pn_validation_contracts.py"]
+domain = "Reviewed field-difference norms, registered observations, empirical numerical error interpretation and decision cost accounting."
+implementation = "Manifest/source/artifact identities, output paths and failed reference command reporting traced."
+resources = "Field differences reuse whole arrays; report fixtures use temporary directories."
+performance = "No population-scale or external-solver runtime guarantee is asserted."
+verification = "Fresh Python discovery passed all 23 tests; full Julia PN/ForwardDiff coverage pending."
+
+[[finding]]
+candidate = "Rational fields which underflow on Float64 conversion reach exponent(0.0) in projected-power precision selection."
+dimension = "implementation and numerical range"
+verification = "Public Rational{BigInt} field 2^-2000 raised DomainError; true result rounds to zero, or finite grid weight with reciprocal BigFloat polarization."
+status = "fixed and locally reverified"
+fix = "Underflowing conversion requests conservative wide precision; bound arithmetic uses BigInt to prevent MPFR-exponent overflow."
+reverify = "test_projected_power_numeric_domains.jl: six checks; TEMP/diffmom-reset-projected-crc.log"
+
+[[finding]]
+candidate = "BigFloat precision-bound construction expands absolute exponents into large rational integers."
+dimension = "memory and performance"
+verification = "Exact old/new helper samples: 501032 versus 224 bytes at exponent -1000000 with only 256 stored significand bits."
+status = "fixed and measured"
+fix = "Base.decompose reads stored significand and binary exponent without rational expansion."
+reverify = "TEMP/diffmom-reset-projected-resources.jl and .log; fixed allocation regression at two exponent scales."
+
+[[surface]]
+files = ["src/planar/PlanarLibrary.jl", "src/planar/PlanarConnectivity.jl"]
+domain = "Independently traced library line/bend/taper/junction/coupled/stub/spiral/MIM/via/bridge/IDC geometry, outward pin placement, Wheeler/current-sheet references and axial dielectric series capacitance. Connectivity joins sheet/via/conductive-volume contacts and excludes driven wall gaps; dielectric bricks do not represent galvanic conductor contacts."
+implementation = "Reviewed parameter/polygon validation, emit order and pin edge identity, mirror/rotation/attachment, schema/SI lowering, union-find labeling, grounding, dangling vias and declared open/short nets."
+resources = "Reviewed output ownership, borrowed shape data, bounded connectivity map/workspace preflight and local union-find lifetime. Library geometry construction is proportional to explicitly requested segment/via/finger count."
+performance = "Scalar reference products use binary exponents; ordinary geometry and union-find use fixed-size vector operations without wide arithmetic. No new library optimization claim."
+verification = "Body review independent of IO agent. Huge anisotropic line norm candidate could not isolate a Library contract violation: independent polygon normalization rejects the same geometry before a shape can be accepted. Existing large-coordinate geometry rejection is not counted as a new confirmed library bug. Original library/connectivity tests remain pending full validation."
+
+[[finding]]
+candidate = "Generic tuple sorting boxes coordinates at every PO triangle/direction interaction."
+dimension = "memory and performance"
+verification = "Profile.Allocs attributed 2359296 bytes/73728 allocations to PhysicalOptics.jl canonical vertex sort in a 128-triangle/72-look solve."
+status = "fixed, locally CRC-verified and measured; GitHub validation pending"
+fix = "Fixed-size lexicographic compare/swap helper preserves canonical origin and allocates no phase-kernel storage."
+reverify = "test_po_phase_resources.jl: 21 checks passed; original PO/PTD 60 checks passed; warmed two-size end-to-end benchmarks improved time and allocations."
+
+[limits]
+optional_paper_artifacts = "Full Test 11 skips manuscript metrics when generated/external CSV artifacts are absent. A full-suite verdict must disclose that skip."
+optional_reference_solvers = "External Bempp/Meep/MATLAB/Sonnet executables and optional aircraft geometry have not been rerun in this reset. Retained fixtures and analytical references provide separate bounded evidence."
+allocation_scope = "Warmed Julia allocations do not establish peak process/native memory. Original full RSS probes provide additional workload-specific evidence."
+completion = "No completion claim while full validation, required CI, confirmed findings or final independent pass are unresolved."
+
+[[surface]]
+files = ["src/geometry/Mesh.jl", "src/geometry/MeshIO.jl"]
+domain = "Complete fresh body read: rectangular/graded/radial/parabolic/slotted meshes; compensated triangle area, centroid and normal; repair orientation constraints; scale-preserving coarsening and midpoint refinement; exact/tolerance STL vertex identity and Float32 topology/orientation preservation."
+implementation = "Traced all constructor, quality, repair, coarsening and refinement flows; bounded two-pass OBJ input, streamed ASCII/binary STL, MSH tag mapping/count contracts, format dispatch and argv-based Gmsh boundary. Unsafe internal indexing is reached only after the relevant caller validates connectivity or constructs it by count. No additional verified defect in this review."
+resources = "Checked vertex/triangle/raw byte arithmetic, line/input streaming limits, exact cluster cell/area retry counts, O(vertices+edges) working maps, refinement output caps and open-do cleanup. Output caps describe output arrays, not whole-process RSS."
+performance = "Ordinary geometric primitives use fixed-size compensated scalars; exceptional geometry uses bounded wide precision. Construction/repair/refinement are linear in requested mesh size apart from sorted edge maps and the explicit bounded coarsening loop. No new geometry throughput or absolute optimization claim."
+verification = "Complete source review independent of original core reviewer. Focused surface checks passed this run; original exact480RWG and threaded SIE use the same mesh/RWG consumers. Full original mesh IO, topology, repair, convergence and resource tests are assigned to final full validation."
+
+[[surface]]
+files = ["src/planar/PlanarArtworkAffine.jl", "src/planar/PlanarArtworkBounds.jl", "src/planar/PlanarArtworkLinearExact.jl", "src/planar/PlanarArtworkRegionExact.jl", "src/planar/PlanarODBCompression.jl", "src/planar/PlanarODBLayers.jl"]
+domain = "Fresh full-body read traced affine path versus aperture transforms, half-angle stationary-point charts, dyadic line/region predicates, directed enclosure of stored inverse transforms, LZW width/reset transitions, physical stack flips and drill-span involution. Gerber parser and artwork raster callers were followed to distinguish canonical exact predicates from legacy affine-arc predicates."
+implementation = "Reviewed ordered dark/clear behavior, formal chord tie handling, recursive bounds depth, inverse singularity rejection, compressed-entity ambiguity, decompression error cleanup, archive path/link/duplicate validation, layer reference uniqueness and bounded JSON escaping. No additional verified bug in this review."
+resources = "Exact predicates derive workspace and precision limits from operands/depth before allocating; compressed streams and temporary directories close on errors. Archive member/metadata/payload limits are checked before extraction. JSON performs a bounded size pass and charges three output copies."
+performance = "Ordinary certified artwork predicates use fixed-size interval scalars; exact fallback is bounded and cold. Decompression uses fixed dictionary/copy buffers. No new throughput or absolute optimization claim."
+verification = "Independent source/control-flow review completed this reset. IO reviewer separately passed 29 original artwork files/590826 checks; final full-validation execution on the production revision remains pending."

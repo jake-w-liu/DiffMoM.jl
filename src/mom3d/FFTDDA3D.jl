@@ -311,7 +311,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                 idx += 1
                 qvec = _scaled_alpha_apply_3d(
                     A.alpha[idx], _read_field_component(xread, idx),
-                    A.kernel.interaction_scale, "scaled FFT DDA dipole", idx)
+                    A.kernel.interaction_scale, "scaled FFT DDA dipole", idx,Val(true))
                 for b in 1:3
                     value = qvec[b]
                     qhat[ix, iy, iz, b] = value
@@ -620,7 +620,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                 q6 = _scaled_alpha_apply_3d(
                     A.alpha[idx], _read_em_field6(xread, idx),
                     A.kernel.interaction_scale,
-                    "scaled FFT EM-DDA dipole", idx)
+                    "scaled FFT EM-DDA dipole", idx,Val(true))
                 for b in 1:6
                     value = q6[b]
                     qhat[ix, iy, iz, b] = value

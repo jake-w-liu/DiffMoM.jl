@@ -500,15 +500,37 @@ function wideband_debye_epsr_3d(freq_hz; eps_inf, delta, tau,
         throw(DimensionMismatch("delta and tau must have equal length"))
     omega = 2pi * f
     acc = epsi
+    real_magnitude,imag_magnitude=abs(real(epsi)),abs(imag(epsi))
+    needs_wide=_dispersion_requires_fallback_3d(f,epsi)
     @inbounds for k in eachindex(delta, tau)
-        _finite_positive_float_3d(tau[k], "tau[$k]")
+        tk=Float64(tau[k])
+        isfinite(tk) && tk>0 || _finite_positive_float_3d(tau[k], "tau[$k]")
         dk = Float64(delta[k])
         isfinite(dk) || error("delta[$k] must be finite, got $(delta[k]).")
-        acc += dk / (1 + 1im * omega * tau[k])
+        needs_wide |= _dispersion_requires_fallback_3d(dk,tk)
+        term=dk / (1 + 1im * omega * tk)
+        acc += term
+        real_magnitude+=abs(real(term));imag_magnitude+=abs(imag(term))
     end
-    epsr = ComplexF64(acc)
+    needs_wide |= !isfinite(acc) || !isfinite(real_magnitude) || !isfinite(imag_magnitude) ||
+        _matrixfree_complex_reduction_requires_exact(acc,real_magnitude,imag_magnitude,length(delta)+1)
+    epsr = needs_wide ? _wideband_debye_epsr_bigfloat_3d(f,epsi,delta,tau) : ComplexF64(acc)
     passive && _validate_passive_scalar_3d(epsr, "eps_r")
     return epsr
+end
+
+@noinline function _wideband_debye_epsr_bigfloat_3d(f,epsi,delta,tau)
+    # Terms never exceed their finite Float64 strengths in magnitude.
+    # Cover the complete Float64 sum span plus a carry for every pole.
+    bits=_DISPERSION_FALLBACK_PRECISION_3D+ndigits(BigInt(length(delta))+1;base=2)
+    return setprecision(BigFloat,bits) do
+        omega=2BigFloat(pi)*BigFloat(f)
+        value=Complex{BigFloat}(epsi)
+        for k in eachindex(delta,tau)
+            value+=BigFloat(Float64(delta[k]))/complex(one(BigFloat),omega*BigFloat(Float64(tau[k])))
+        end
+        _finite_dispersion_result_3d(value,"wideband Debye permittivity")
+    end
 end
 
 """

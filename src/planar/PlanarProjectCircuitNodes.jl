@@ -42,6 +42,22 @@ function _project_node_contracts(project,port_names,components;max_bytes)
     return names,pairs,D
 end
 
+# Incidence columns are independent precisely when their terminal graph is
+# a forest. A cycle (including parallel port pairs) imposes a physical
+# voltage constraint, even if there are no lumped component tables.
+function _project_has_node_constraints(model::PlanarProjectModel)
+    pairs=model.port_terminals
+    all(k->pairs[k]==(k,0),eachindex(pairs)) && return false
+    parent=collect(1:(length(model.node_names)+1))
+    for (positive,negative) in pairs
+        left=_planar_net_root!(parent,positive+1)
+        right=_planar_net_root!(parent,negative+1)
+        left==right && return true
+        parent[left]=right
+    end
+    return false
+end
+
 """Describe the actual voltage/current modes represented by a project's
 EM sources. The signed `incidence` matrix D maps node voltages to physical
 port voltages as `transpose(D)*v`, and port currents to nodal injections

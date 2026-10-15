@@ -42,6 +42,14 @@ mutable struct PlanarCircuit
     ports::Vector{Tuple{Int,Int}}
     z0::Any
     elements::Vector{_PlanarCircuitElement}
+    spice_instances::Union{Nothing,Dict{String,Any}}
+end
+PlanarCircuit(nnodes,ports,z0,elements)=PlanarCircuit(nnodes,ports,z0,elements,nothing)
+
+function _circuit_copy(circuit::PlanarCircuit;
+        z0=_planar_store_references(circuit.z0,length(circuit.ports)))
+    instances=circuit.spice_instances===nothing ? nothing : copy(circuit.spice_instances)
+    return PlanarCircuit(circuit.nnodes,copy(circuit.ports),z0,copy(circuit.elements),instances)
 end
 
 function _circuit_terminals(nnodes::Int, terminals)
@@ -257,6 +265,13 @@ _circuit_stamp_extra!(M,row,element,f,branch_rows)=throw(ArgumentError("unsuppor
 _circuit_owned_model(element)=nothing
 function _circuit_owned_model_payload(circuit)
     seen=Base.IdSet{Any}();payload=0
+    if circuit.spice_instances!==nothing
+        for model in values(circuit.spice_instances)
+            model in seen && continue
+            push!(seen,model)
+            payload=_checked_payload_sum("circuit owned models",payload,model.payload)
+        end
+    end
     for element in circuit.elements
         model=_circuit_owned_model(element)
         model===nothing || model in seen || begin

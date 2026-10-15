@@ -1,0 +1,106 @@
+audit_date = "2026-10-15"
+base_revision = "dd2f0eb4df088a25b95e7ee2b97fe52454d1fcc6"
+status = "fresh independent API/source review complete; ACA fixes locally verified; full-core scientific/resource validation pending"
+reviewer = "independent planar-physics agent follow-up"
+global_optimization_claim = false
+whole_repository_bug_free_claim = false
+
+[[surface]]
+files = ["src/fast/ClusterTree.jl", "src/fast/Octree.jl"]
+domain = "Reviewed geometric partition/permutation, center bounds, exact admissibility boundary, octree parent/child relations, neighbor and interaction-list construction."
+implementation = "Traced count/depth/index validation, inverse permutations, representable coordinate extents and error paths."
+resources = "Reviewed conservative node/box/storage preflight and local construction ownership; no persistent mutable global tree state."
+performance = "Median bisection and lexicographic octree placement retain bounded traversal; no fresh whole-tree scaling measurement by this reviewer."
+verification = "Source/control-flow review; root full_core cluster/octree tests pending."
+
+[[surface]]
+files = ["src/fast/ACA.jl"]
+domain = "Reviewed U*V' convention, complex residual updates, scale-invariant Frobenius estimate, block partition and reciprocity. Real orthogonal RWG plate geometry confirmed two missed residual-pivot cases."
+implementation = "Fixed bounded unused-row restart without consuming rank budget, plus validation before unsafe EFIE indexing. Reviewed dense fallback, getindex/mul consistency and forward/adjoint paths."
+resources = "Original factor byte ceiling remains; restart reuses the same residual row. Shared product workspace is protected by try/finally ReentrantLock; block construction has independent task output/cache ownership."
+performance = "Ordinary 5x5 EFIE block: baseline 40.3 microseconds/4848 B, fixed 40.0 microseconds/4848 B; approximation identical. Zero-pivot exceptional search may inspect all remaining rows, required to distinguish an all-zero block from a missed nonzero row."
+verification = "33 new geometric/range/resource/forward/adjoint checks, including explicit rank-one-budget preservation, and 7 existing workflow/batched ACA checks passed; original full_core Tests25-27 pending fresh full run."
+
+[[surface]]
+files = ["src/fast/MLFMA.jl"]
+domain = "Traced sphere quadrature/truncation, outgoing h2 translation, spectral aggregation/disaggregation and adjoint reversal; exact near field and exponent-band product recovery remain separate."
+implementation = "Reviewed build validation, public indexing through the represented operator, forward/adjoint lock acquisition, alias input copies and cleanup on errors."
+resources = "Reviewed per-level sampling/setup/near-field/translation preflight, checked work counts and bounded exact-combination work; operator workspace lock serializes shared calls."
+performance = "Reviewed preallocated phase/filter/translation plans and absence of former dense interpolation tables. Fresh root scaling benchmark and complete MLFMA original tests remain required evidence."
+verification = "Source/control-flow review; root full_core MLFMA science, transpose, concurrency and allocation tests pending."
+
+[[surface]]
+files = ["src/postprocessing/FarField.jl", "src/postprocessing/NearField.jl"]
+domain = "Traced exp(+iwt) phase signs, double-cross transverse radiation, peak-phasor weighting, mixed-potential near fields, singular subtraction, incident/scattered combination and exact retry."
+implementation = "Reviewed mesh/RWG pairing, spherical metadata consistency, supplied observation snapshot, supported excitation dispatch, on-surface rejection, empty/zero current paths and finite output checks."
+resources = "Reviewed output/work/interaction/exact retry ceilings; threaded far-field writes distinct columns and near-field writes distinct observation columns. Scoped BigFloat precision is task-local on supported Julia versions."
+performance = "Reviewed operation-local geometry/quadrature reuse and concrete captured prefactors; fresh root hotpath measurements and original near/far-field tests are required before a performance verdict."
+verification = "Source/control-flow review; root full_core near/far field and test_radiation_resources.jl validation pending."
+
+[[surface]]
+files = ["src/postprocessing/PhysicalOptics.jl", "src/postprocessing/PTD.jl"]
+domain = "Re-derived 2*n×H illuminated surface current, outgoing-minus-incident phase, peak-phasor far-field prefactor and boundary half-plane fringe combination. PTD interior wedges deliberately reject because that physics branch is unsupported."
+implementation = "Reviewed frequency/wavevector matching, deterministic edge extraction, face/edge orientation, phase origin, preflight before PO construction and coherent cancellation recovery."
+resources = "Reviewed retained PO/PTD output versus construction workspace reservations, edge-by-direction work and bounded exceptional direction storage."
+performance = "Reviewed analytic triangle phase integrals and edge-invariant work hoisting; no new performance modification proposed without measurements."
+verification = "Source/control-flow review; root full_core PO/PTD analytic/translation/reference/range tests pending."
+
+[[surface]]
+files = ["src/postprocessing/Mie.jl", "src/postprocessing/PeriodicMetrics.jl"]
+domain = "Traced outgoing h2 PEC/magnetodielectric coefficients, angular recurrence, matched-medium/Rayleigh cases; periodic Floquet orders, grazing classification, transverse polarization, oblique flux normalization and sheet transmission relation."
+implementation = "Reviewed finite material/direction/order validation, explicit nmax under zero contrast, bounded recurrence/exact work, coplanarity and incident-order validation."
+resources = "Reviewed bounded order enumeration, ordinary/exact Fourier work ceilings and local recurrence/precision ownership."
+performance = "Reviewed streamed recurrences/current Fourier contractions; no global optimality or all-scale accuracy assertion from source review alone."
+verification = "Source/control-flow review; root full_core Mie and original periodic_topology tests pending."
+
+[[surface]]
+files = ["src/postprocessing/Diagnostics.jl", "src/postprocessing/Visualization.jl"]
+domain = "Reviewed power/RCS peak-phasor normalization, exact-positive/quadratic fallback and polarization projection; mesh visualization preserves physical axis aspect and finite extents."
+implementation = "Diagnostics numeric-domain fixes remain root-owned. Independently traced current public validation and output normalization. Visualization validates nonempty finite coordinates and representable padded axis ranges."
+resources = "Reviewed zero-allocation ordinary diagnostics, operation-owned exact fallback and preview file writer lifetime. Plot backend/native export integration is not established by static review."
+performance = "Root owns diagnostics and benchmark changes; no independent benchmark rerun by this reviewer."
+verification = "Source/control-flow review; root focused diagnostics tests, full_core diagnostic/range checks and mesh aspect test pending."
+
+[[finding]]
+candidate = "Partially pivoted ACA returns a zero/partial block when a residual row or the current residual column support vanishes while another row/column remains nonzero."
+dimension = "domain/implementation correctness"
+verification = "Legitimate 16-vertex, 8-triangle, 4-RWG disconnected diamond plates at z=0,1,4,5; one x-oriented and three y-oriented RWGs. Centroid quadrature gives exact far block [[0,0],[0.0003638918384+0.001646619025im,0.001163148686+0.0005640591181im]]. Before fix: rank0, 100% block error, full operator relative error 2.987735725e-5 and reciprocity defect 4.225296383e-5 at requested ACA tolerance 1e-10. Orthogonal column orientations independently expose premature termination after the first update."
+status = "fixed and locally CRC-verified"
+fix = "Search remaining unused rows only on zero residual pivot/support, mark failed rows, preserve actual-rank cap and existing nonfinite recovery."
+reverify = "test_aca_zero_pivots.jl:33 checks across row/column permutations, both structural cases, exact-zero block, rank-one-budget preservation, full operator and adjoint action, output ceiling and invalid indices. test_workflow_aca_budget.jl:7 existing checks passed."
+
+[[finding]]
+candidate = "Exported aca_lowrank accepts invalid row/column indices and forwards them to an unchecked EFIE kernel."
+dimension = "implementation/memory safety boundary"
+verification = "Direct current control-flow proof: aca_lowrank called _efie_entry without validation; _efie_entry indexes cache.tri_ids and other arrays under @inbounds. No unsafe crash probe was performed."
+status = "fixed and locally reverified"
+fix = "Validate each row/column index against cache.rwg.nedges after cheap factor payload preflight and before kernel evaluation."
+reverify = "Invalid zero row and out-of-range column throw BoundsError in both geometric fixtures; ordinary allocation benchmark unchanged."
+
+[local_evidence]
+julia = "1.13.1"
+julia_threads = 4
+blas_threads = 1
+log_directory = "C:/Users/User/AppData/Local/Temp"
+before_log = "diffmom-aca-zero-row-before.log"
+crc_log = "diffmom-aca-zero-pivots-after.log"
+crc_files = ["test_aca_zero_pivots.jl", "test_workflow_aca_budget.jl"]
+crc_checks = [32, 7]
+crc_seconds_including_compilation = [6.4238331, 11.0132251]
+crc_peak_rss_bytes = 696414208
+final_regression_log = "diffmom-aca-zero-pivots-final.log"
+final_regression_checks = 33
+final_regression_seconds_including_compilation = 6.9508594
+final_regression_peak_rss_bytes = 560943104
+benchmark_log = "diffmom-aca-zero-pivots-benchmark.log"
+benchmark_shape = [5, 5]
+benchmark_rank = 5
+benchmark_baseline = "Exact aca_lowrank source from base_revision loaded under a temporary method name in an isolated Julia process."
+benchmark_old_seconds = 0.0000403
+benchmark_new_seconds = 0.0000400
+benchmark_old_allocated_bytes = 4848
+benchmark_new_allocated_bytes = 4848
+
+[pending]
+full_core = "Original full scientific checks for ACA25-27, MLFMA, PO/PTD, near/far fields, Mie, Diagnostics, and independent periodic_topology suite must pass in the current fresh full validation run."
+limits = "Static review cannot prove no possible bugs or global optimization. Native plotting/export dependencies and complete multi-platform full suites require separate observed evidence."

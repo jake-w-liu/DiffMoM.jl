@@ -60,7 +60,7 @@ function planar_floating_bridge(prob::PlanarProblem,signal::PlanarPort,reference
     source=PlanarPort(signal.level,xaxis ? :x : :y,cut,span,z0;
         polarity=_is_planar_positive_terminal(signal.wall) ? 1 : -1)
     cells=BigInt(hi-lo)*length(span);boxcells=BigInt(grid.nx)*grid.ny
-    nb=max(planar_basis_count(prob.basis),_terminal_geometry_basis_count(grid,prob.sheets,prob.vias,prob.vols))+
+    nb=max(planar_basis_count(prob.basis),_terminal_geometry_basis_count(grid,prob.sheets,prob.vias,prob.vols,prob.bricks))+
         4cells+sum(BigInt(length(p.cells)) for p in prob.ports if _is_planar_terminal(p.wall);init=BigInt(0))
     payload=_checked_payload_sum("floating source bridge",
         _checked_array_payload_bytes(UInt64,3,cld(boxcells,64)),
@@ -93,7 +93,8 @@ function planar_floating_bridge(prob::PlanarProblem,signal::PlanarPort,reference
         (_planar_same_open_endpoint(p,signal)||_planar_same_open_endpoint(p,reference)) && continue
         push!(ports,p);old_port_map[i]=length(ports)
     end
-    push!(ports,source);problem=build_planar_problem(prob.stack,grid,sheets,ports;vias=prob.vias,vols=prob.vols)
+    push!(ports,source);problem=build_planar_problem(prob.stack,grid,sheets,ports;
+        vias=prob.vias,vols=prob.vols,bricks=prob.bricks)
     bridge=(cells=filled,signal=signal,reference=reference,axis=xaxis ? :x : :y,
         sheet=signal.level,interface=original.interface,source_edge=Int(cut),span=span,
         width=length(span)*(xaxis ? grid.dy : grid.dx),length=(hi-lo)*(xaxis ? grid.dx : grid.dy),

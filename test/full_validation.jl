@@ -12,14 +12,13 @@ function run_full_validation_group(files)
          --threads=$(Threads.nthreads()) --heap-size-hint=1G $worker $files`)
 end
 
-function run_full_validation_files(files; group_size=8)
-    for first in 1:group_size:length(files)
-        last = min(first + group_size - 1, length(files))
-        run_full_validation_group(files[first:last])
-    end
+shard=parse(Int,get(ENV,"DIFFMOM_FULL_SHARD","1"))
+shards=parse(Int,get(ENV,"DIFFMOM_FULL_SHARDS","1"))
+groups=full_reference_groups()
+1<=shard<=shards<=length(groups) || throw(ArgumentError("invalid full-validation shard selection"))
+for (index,files) in enumerate(groups)
+    mod(index-1,shards)+1==shard || continue
+    println("\nFull validation group $index/$(length(groups)), shard $shard/$shards")
+    run_full_validation_group(files)
 end
-
-run_full_validation_files(FULL_REFERENCE_BEFORE_CORE)
-run_full_validation_group(["full_core.jl"])
-run_full_validation_files(FULL_REFERENCE_AFTER_CORE)
-println("\nFULL VALIDATION PASSED")
+println(shards==1 ? "\nFULL VALIDATION PASSED" : "\nFULL VALIDATION SHARD $shard/$shards PASSED")

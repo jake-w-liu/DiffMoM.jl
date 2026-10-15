@@ -24,6 +24,10 @@ end
         rows,cols=order[1:2],order[3:4]
         exact=[DiffMoM._efie_entry(cache,i,j) for i in rows,j in cols]
         @test iszero(exact[1,2]) && !iszero(exact[2,2])
+        if columns==(:y,:y)
+            U,V=aca_lowrank(cache,rows,cols[1:1];max_rank=1)
+            @test size(U,2)==1 && isapprox(U*V',exact[:,1:1];rtol=1e-13)
+        end
         for r in (rows,reverse(rows)),c in (cols,reverse(cols))
             target=[DiffMoM._efie_entry(cache,i,j) for i in r,j in c]
             U,V=aca_lowrank(cache,r,c;tol=1e-10,max_rank=2)

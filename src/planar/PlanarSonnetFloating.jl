@@ -139,6 +139,21 @@ function _sonnet_float_endpoint(pin)
     return PlanarPort(p.level,p.wall,p.cells,p.z0;edge=p.edge,polarity=1,refplane=p.refplane)
 end
 
+function _sonnet_floating_retained_payload(model)
+    seen=Base.IdSet{Any}()
+    return _checked_payload_sum("native floating retained model",
+        _sonnet_component_base_payload(model,seen),
+        _subdivision_retained_payload(model.source_incidence,seen),
+        _subdivision_retained_payload(model.source_terminals,seen),
+        _spice_circuit_payload(model.circuit),_circuit_owned_model_payload(model.circuit),
+        _checked_array_payload_bytes(UInt8,256,length(model.bridges)+length(model.reference_paths)+length(model.pin_refplanes)),
+        (_subdivision_retained_payload(bridge.cells,seen) for bridge in model.bridges)...,
+        (_subdivision_retained_payload(path.cells,seen) for path in model.reference_paths)...,
+        model.scalar_files===nothing ? 0 : _sonnet_scalar_files_payload(model.scalar_files),
+        model.model_files===nothing ? 0 : model.model_files.payload,
+        _sonnet_component_variable_payload(model.variables))
+end
+
 """Lower native FLOAT CUP and component ports with explicit signed
 positive/negative pad pairs to finite impressed-field bridges. Every pair
 has one physical differential voltage and equal/opposite source current;
@@ -339,7 +354,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
             for pin in unpaired
                 pin.number in labels && throw(ArgumentError(
                     "native FLOAT label collides with an ordinary or previously defined source mode"))
-                payload=_subdivision_retained_payload(Any[problem,C,common,sheet_zs,via_sigma])
+                payload=_sonnet_component_base_payload((;problem,contraction=C,
+                    floating_common=common,z0=refs,labels,sheet_zs,via_sigma))
                 reserve=_checked_payload_sum("native floating source model",payload,
                     variable_payload,file_payload,
                     _checked_array_payload_bytes(Float64,length(problem.ports)+1,length(labels)+1),
@@ -385,7 +401,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         # it so the circuit never carries a dangling isolated node.
         for (positive,negative,label) in pairpins
             label in labels && throw(ArgumentError("native FLOAT label collides with an ordinary or previously defined source mode"))
-            payload=_subdivision_retained_payload(Any[problem,C,common,sheet_zs,via_sigma])
+            payload=_sonnet_component_base_payload((;problem,contraction=C,
+                floating_common=common,z0=refs,labels,sheet_zs,via_sigma))
             reserve=_checked_payload_sum("native floating source model",payload,variable_payload,file_payload,
                 _checked_array_payload_bytes(Float64,length(problem.ports)+1,length(labels)+1),
                 _checked_array_payload_bytes(Float64,length(problem.ports)+1,size(common,2)),
@@ -500,12 +517,7 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
     model=(;project=owned_project,problem,contraction=C,floating_common=common,z0=refs,labels,circuit,sheet_zs,via_sigma,
         source_incidence=D,source_terminals=pairs,bridges,reference_paths=paths,external_labels=external_labels[order],
         pin_refplanes,scalar_files,model_files,variables=variables isa SonnetScalarVariables ? variables.overrides : variables)
-    payload=_checked_payload_sum("native floating retained model",
-        _subdivision_retained_payload(Any[model.problem,model.contraction,model.sheet_zs,
-            model.via_sigma,model.source_incidence,model.floating_common]),
-        model.scalar_files===nothing ? 0 : _sonnet_scalar_files_payload(model.scalar_files),
-        model.model_files===nothing ? 0 : model.model_files.payload,
-        _sonnet_component_variable_payload(model.variables))
+    payload=_sonnet_floating_retained_payload(model)
     _enforce_payload_limit(payload,max_bytes,"native floating retained model","max_bytes")
     return merge(model,(;payload))
 end
@@ -597,7 +609,8 @@ function _solve_sonnet_floating(p::SonnetProject,freq::Real;grid=nothing,
     y=circuit.y;s=circuit.s
     transfer=Matrix{ComplexF64}(I,size(s,1),size(s,1))
     combined=isempty(model.pin_refplanes) ? nothing :
-        _sonnet_float_pin_chains(model,freq;max_bytes=max_bytes-payload-workspace,kw...)
+        _sonnet_float_pin_chains(model,freq;
+            max_bytes=_sonnet_child_solve_budget((em,circuit),payload+workspace,max_bytes),kw...)
     if calibration!==nothing
         length(calibration)==length(model.external_labels) ||
             throw(DimensionMismatch("native external calibration needs one chain per external label"))

@@ -129,8 +129,8 @@ function _spice_w_matrix(values,key,n,card)
         result[row,col]=result[col,row]=values[index];index+=1
     end
     all(isfinite,result) || _spice_failure(card,"W $key entries must be finite")
-    scale=max(1.0,maximum(abs,result))
-    minimum(eigvals(Hermitian(result)))>=-1e-9*scale ||
+    scale=maximum(abs,result)
+    (iszero(scale) || minimum(LinearAlgebra.eigvals!(Hermitian(result./scale)))>=-1e-9) ||
         _spice_failure(card,"W $key matrix must be positive semidefinite")
     result
 end

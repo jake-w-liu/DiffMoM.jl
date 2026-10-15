@@ -369,12 +369,18 @@ end
     _electric_dipole_geometry_requires_exact_3d(ri, rj, k) &&
         return _em_interaction_apply_bigfloat_3d(
             ri, rj, k, q, m, eta0)
-    E = _electric_dipole_apply_3d(ri, rj, k, q) +
-        magnetic_dipole_electric_field_3d(
-            ri, rj, k, m; eta0=eta0)
-    H = electric_dipole_magnetic_field_3d(
-            ri, rj, k, q; eta0=eta0) +
-        _electric_dipole_apply_3d(ri, rj, k, m)
+    electric_q=_electric_dipole_apply_3d(ri,rj,k,q)
+    electric_m=magnetic_dipole_electric_field_3d(ri,rj,k,m;eta0=eta0)
+    magnetic_q=electric_dipole_magnetic_field_3d(ri,rj,k,q;eta0=eta0)
+    magnetic_m=_electric_dipole_apply_3d(ri,rj,k,m)
+    E,H=electric_q+electric_m,magnetic_q+magnetic_m
+    for component in 1:3
+        if !isfinite(E[component]) || !isfinite(H[component]) ||
+            _scaled_sum_requires_exact(electric_q[component],electric_m[component],E[component]) ||
+            _scaled_sum_requires_exact(magnetic_q[component],magnetic_m[component],H[component])
+            return _em_interaction_apply_bigfloat_3d(ri,rj,k,q,m,eta0)
+        end
+    end
     return E, H
 end
 
@@ -385,7 +391,7 @@ function _em_interaction_apply_bigfloat_3d(
         q::CVec3,
         m::CVec3,
         eta0::Float64=_ETA0_DDA)
-    precision = _electric_dipole_exact_precision_3d(ri, rj, k)
+    precision = max(_MULTI_SOURCE_EXACT_PRECISION,_electric_dipole_exact_precision_3d(ri,rj,k))
     return setprecision(BigFloat, precision) do
         qb = SVector{3,Complex{BigFloat}}(ntuple(
             component -> Complex{BigFloat}(q[component]), 3))
@@ -437,8 +443,8 @@ function _em_alpha_interaction_apply_bigfloat_3d(
         k::Float64,
         alpha::_CMat6DDA,
         field::_CVec6DDA,
-        eta0::Float64=_ETA0_DDA)
-    precision = _electric_dipole_exact_precision_3d(ri, rj, k)
+        eta0::Float64=_ETA0_DDA,::Val{wide}=Val(false)) where {wide}
+    precision = max(_MULTI_SOURCE_EXACT_PRECISION,_electric_dipole_exact_precision_3d(ri,rj,k))
     return setprecision(BigFloat, precision) do
         dipoles = _alpha_apply_bigfloat_vector_3d(alpha, field)
         q = SVector{3,Complex{BigFloat}}(
@@ -447,6 +453,7 @@ function _em_alpha_interaction_apply_bigfloat_3d(
             dipoles[4], dipoles[5], dipoles[6])
         E, H = _em_interaction_value_bigfloat_3d(
             ri, rj, k, q, m, eta0)
+        wide && return E,H
         converted_E = CVec3(
             ComplexF64(E[1]), ComplexF64(E[2]), ComplexF64(E[3]))
         converted_H = CVec3(
@@ -1178,35 +1185,25 @@ before result or observation validation.
 @noinline function _scattered_fields_sum_bigfloat_em_dda_3d(
         res::EMDDAResult3D,
         observation::Vec3)
-    return setprecision(
-            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
-        total_E = zero(SVector{3,Complex{BigFloat}})
-        total_H = zero(SVector{3,Complex{BigFloat}})
+    return setprecision(BigFloat,_MULTI_SOURCE_EXACT_PRECISION) do
+        total=zeros(Complex{BigFloat},6)
+        budget=_MultiSourceExactBudget(_multi_exact_accumulator_bytes(6),_default_max_dense_payload_bytes())
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
-            dipoles = _alpha_apply_bigfloat_vector_3d(
-                res.alpha[j],
-                _join_em_field(res.E_total[j], res.H_total[j]))
-            q = SVector{3,Complex{BigFloat}}(
-                dipoles[1], dipoles[2], dipoles[3])
-            m = SVector{3,Complex{BigFloat}}(
-                dipoles[4], dipoles[5], dipoles[6])
             contribution_E, contribution_H =
-                _em_interaction_value_bigfloat_3d(
-                    observation, res.grid.centers[j], res.k0, q, m,
-                    res.eta0)
-            total_E += contribution_E
-            total_H += contribution_H
+                _em_alpha_interaction_apply_bigfloat_3d(
+                    observation,res.grid.centers[j],res.k0,res.alpha[j],
+                    _join_em_field(res.E_total[j],res.H_total[j]),res.eta0,Val(true))
+            for component in 1:3
+                _source_exact_add_product!(total,component,budget,contribution_E[component])
+                _source_exact_add_product!(total,component+3,budget,contribution_H[component])
+            end
         end
         converted_E = CVec3(
-            ComplexF64(total_E[1]),
-            ComplexF64(total_E[2]),
-            ComplexF64(total_E[3]),
+            ComplexF64(total[1]),ComplexF64(total[2]),ComplexF64(total[3]),
         )
         converted_H = CVec3(
-            ComplexF64(total_H[1]),
-            ComplexF64(total_H[2]),
-            ComplexF64(total_H[3]),
+            ComplexF64(total[4]),ComplexF64(total[5]),ComplexF64(total[6]),
         )
         all(isfinite, converted_E) && all(isfinite, converted_H) ||
             throw(OverflowError(
@@ -1220,6 +1217,7 @@ function _scattered_fields_sum_em_dda_3d(
         observation::Vec3)
     total_E = zero(CVec3)
     total_H = zero(CVec3)
+    real_magnitude,imag_magnitude=zero(SVector{6,Float64}),zero(SVector{6,Float64})
     try
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
@@ -1236,12 +1234,16 @@ function _scattered_fields_sum_em_dda_3d(
                     res, observation)
             total_E = next_E
             total_H = next_H
+            real_magnitude,imag_magnitude=_dda_add_accumulation_magnitudes(
+                real_magnitude,imag_magnitude,_join_em_field(contribution_E,contribution_H))
         end
     catch err
         err isa OverflowError || rethrow()
         return _scattered_fields_sum_bigfloat_em_dda_3d(
             res, observation)
     end
+    _dda_accumulation_requires_exact(_join_em_field(total_E,total_H),real_magnitude,imag_magnitude,res.grid.nvoxels) &&
+        return _scattered_fields_sum_bigfloat_em_dda_3d(res,observation)
     return total_E, total_H
 end
 
@@ -1269,7 +1271,7 @@ function _em_farfield_alpha_contribution_bigfloat_3d(
         k::Float64,
         supplied_direction::Vec3,
         center::Vec3,
-        eta::Float64)
+        eta::Float64,::Val{wide}=Val(false)) where {wide}
     precision = max(
         _MULTI_SOURCE_EXACT_PRECISION,
         _source_directional_phase_precision(
@@ -1304,6 +1306,7 @@ function _em_farfield_alpha_contribution_bigfloat_3d(
         prefactor = BigFloat(k)^2 / (4 * BigFloat(pi))
         E_value = phase * prefactor * E_term
         H_value = phase * prefactor * H_term
+        wide && return E_value,H_value
         converted_E = CVec3(
             ComplexF64(E_value[1]),
             ComplexF64(E_value[2]),
@@ -1349,10 +1352,19 @@ end
             projection_direction, m) / projection_norm
         normalized_cross_q = _dipole_cross(
             projection_direction, q) / projection_norm
-        E_contribution = phase * (
-            projected_q - eta * normalized_cross_m)
-        H_contribution = phase * (
-            normalized_cross_q / eta + projected_m)
+        electric_m=-eta*normalized_cross_m
+        magnetic_q=normalized_cross_q/eta
+        electric=projected_q+electric_m
+        magnetic=magnetic_q+projected_m
+        for component in 1:3
+            if _scaled_sum_requires_exact(projected_q[component],electric_m[component],electric[component]) ||
+                _scaled_sum_requires_exact(magnetic_q[component],projected_m[component],magnetic[component])
+                return _em_farfield_alpha_contribution_bigfloat_3d(
+                    alpha,field,k,supplied_direction,center,eta)
+            end
+        end
+        E_contribution=phase*electric
+        H_contribution=phase*magnetic
         prefactor, scale_fraction, scale_exponent =
             _farfield_prefactor_dda_3d(k)
         if iszero(scale_fraction)
@@ -1375,56 +1387,24 @@ end
         res::EMDDAResult3D,
         supplied_direction::Vec3,
         eta::Float64)
-    precision = _directional_farfield_precision_3d(
-        res.k0, res.grid.centers, supplied_direction,
-        _DDA_ACCUMULATION_FALLBACK_PRECISION)
-    return setprecision(BigFloat, precision) do
-        direction = SVector{3,BigFloat}(
-            BigFloat(supplied_direction[1]),
-            BigFloat(supplied_direction[2]),
-            BigFloat(supplied_direction[3]),
-        )
-        direction_norm_squared = sum(abs2, direction)
-        direction_norm = sqrt(direction_norm_squared)
-        eta_big = BigFloat(eta)
-        prefactor = BigFloat(res.k0)^2 / (4 * BigFloat(pi))
-        total_E = zero(SVector{3,Complex{BigFloat}})
-        total_H = zero(SVector{3,Complex{BigFloat}})
+    return setprecision(BigFloat,_MULTI_SOURCE_EXACT_PRECISION) do
+        total=zeros(Complex{BigFloat},6)
+        budget=_MultiSourceExactBudget(_multi_exact_accumulator_bytes(6),_default_max_dense_payload_bytes())
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
-            dipoles = _alpha_apply_bigfloat_vector_3d(
-                res.alpha[j],
-                _join_em_field(res.E_total[j], res.H_total[j]))
-            q = SVector{3,Complex{BigFloat}}(
-                dipoles[1], dipoles[2], dipoles[3])
-            m = SVector{3,Complex{BigFloat}}(
-                dipoles[4], dipoles[5], dipoles[6])
-            projected_q = cross(cross(direction, q), direction) /
-                          direction_norm_squared
-            projected_m = cross(cross(direction, m), direction) /
-                          direction_norm_squared
-            phase_argument = BigFloat(res.k0) * sum(
-                direction[index] *
-                BigFloat(res.grid.centers[j][index])
-                for index in 1:3) / direction_norm
-            phase_prefactor =
-                exp(Complex{BigFloat}(0, phase_argument)) * prefactor
-            total_E += phase_prefactor *
-                       (projected_q - eta_big *
-                        cross(direction, m) / direction_norm)
-            total_H += phase_prefactor *
-                       (cross(direction, q) /
-                        (direction_norm * eta_big) + projected_m)
+            contribution_E,contribution_H=_em_farfield_alpha_contribution_bigfloat_3d(
+                res.alpha[j],_join_em_field(res.E_total[j],res.H_total[j]),
+                res.k0,supplied_direction,res.grid.centers[j],eta,Val(true))
+            for component in 1:3
+                _source_exact_add_product!(total,component,budget,contribution_E[component])
+                _source_exact_add_product!(total,component+3,budget,contribution_H[component])
+            end
         end
         converted_E = CVec3(
-            ComplexF64(total_E[1]),
-            ComplexF64(total_E[2]),
-            ComplexF64(total_E[3]),
+            ComplexF64(total[1]),ComplexF64(total[2]),ComplexF64(total[3]),
         )
         converted_H = CVec3(
-            ComplexF64(total_H[1]),
-            ComplexF64(total_H[2]),
-            ComplexF64(total_H[3]),
+            ComplexF64(total[4]),ComplexF64(total[5]),ComplexF64(total[6]),
         )
         all(isfinite, converted_E) && all(isfinite, converted_H) ||
             throw(OverflowError(
@@ -1454,6 +1434,7 @@ function _em_farfield_sum_3d(
     projection_norm = sqrt(projection_norm_squared)
     total_E = zero(CVec3)
     total_H = zero(CVec3)
+    real_magnitude,imag_magnitude=zero(SVector{6,Float64}),zero(SVector{6,Float64})
     try
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
@@ -1472,12 +1453,16 @@ function _em_farfield_sum_3d(
                     res, supplied_direction, eta)
             total_E = next_E
             total_H = next_H
+            real_magnitude,imag_magnitude=_dda_add_accumulation_magnitudes(
+                real_magnitude,imag_magnitude,_join_em_field(contribution_E,contribution_H))
         end
     catch err
         err isa OverflowError || rethrow()
         return _em_farfield_sum_bigfloat_3d(
             res, supplied_direction, eta)
     end
+    _dda_accumulation_requires_exact(_join_em_field(total_E,total_H),real_magnitude,imag_magnitude,res.grid.nvoxels) &&
+        return _em_farfield_sum_bigfloat_3d(res,supplied_direction,eta)
     return total_E, total_H
 end
 

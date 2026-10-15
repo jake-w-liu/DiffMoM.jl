@@ -201,6 +201,21 @@ function _po_G(n::Int, w)
     return g
 end
 
+@inline function _po_canonical_phase_vertices(first::Vec3, second::Vec3, third::Vec3)
+    # Three compare/swap steps preserve lexicographic canonical ordering
+    # without the generic sort's boxed coordinate tuples per interaction.
+    if isless(Tuple(second), Tuple(first))
+        first, second = second, first
+    end
+    if isless(Tuple(third), Tuple(second))
+        second, third = third, second
+    end
+    if isless(Tuple(second), Tuple(first))
+        first, second = second, first
+    end
+    return second, third, first
+end
+
 function _phase_integral_analytical_big_value(
         k::Union{Float64,BigFloat},
         delta_k::Union{Vec3,SVector{3,BigFloat}},
@@ -287,11 +302,9 @@ end
                 BigFloat(amplitude) / BigFloat(2π)
         @inbounds for triangle in eachindex(illuminated)
             illuminated[triangle] || continue
-            vertices = sort(
-                (vertex1[triangle], vertex2[triangle], vertex3[triangle]);
-                by=Tuple)
             canonical_first, canonical_second, canonical_third =
-                vertices[2], vertices[3], vertices[1]
+                _po_canonical_phase_vertices(
+                    vertex1[triangle], vertex2[triangle], vertex3[triangle])
             integral = _phase_integral_analytical_big_value(
                 k_big, delta_big,
                 canonical_first, canonical_second, canonical_third,
@@ -347,9 +360,8 @@ function _po_farfield_direction_mesh_big(
         first = _mesh_vertex(mesh, mesh.tri[1, triangle])
         second = _mesh_vertex(mesh, mesh.tri[2, triangle])
         third = _mesh_vertex(mesh, mesh.tri[3, triangle])
-        vertices = sort((first, second, third); by=Tuple)
         canonical_first, canonical_second, canonical_third =
-            vertices[2], vertices[3], vertices[1]
+            _po_canonical_phase_vertices(first, second, third)
         area = triangle_area(mesh, triangle)
         integral = _phase_integral_analytical_big_value(
             k_big, delta_big,
@@ -419,8 +431,7 @@ function _phase_integral_analytical(k::Float64, delta_k::Vec3,
     # near-pole expansions must not depend on the caller's cyclic triangle
     # ordering, so choose that origin and the two remaining vertices from the
     # geometry itself.
-    vertices = sort((p1, p2, p3); by=Tuple)
-    p1, p2, p3 = vertices[2], vertices[3], vertices[1]
+    p1, p2, p3 = _po_canonical_phase_vertices(p1, p2, p3)
     edge1 = p1 - p3
     edge2 = p2 - p3
     if _source_phase_requires_fallback(k, edge1, delta_k) ||

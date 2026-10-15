@@ -1,0 +1,204 @@
+schema_version = 1
+owner = "planar_physics_audit"
+audit = "Independent fresh reset source review on 2026-10-15"
+base_revision = "25174314"
+status = "14 source bodies reviewed; four owned confirmed fixes pass local CRC; independently confirmed EM Huygens defect transferred to root; current revision full CI still required"
+full_validation_pass = false
+not_claimed = ["absolute optimization", "absence of every possible bug", "RSS bounded by raw array budgets", "runtime coverage of every arbitrary precision or native backend"]
+
+[[files]]
+path = "src/Types.jl"
+body_review = "complete"
+domain = "Derived dyadic span/carry bounds, exact rational spacing, duplicate local mass reduction, complex adjoint and scaled sum identities; no new verified defect."
+implementation = "Read constructors, canonical triplets, row/column order, fingerprints, conversions and all mul!/accumulation paths; dimensions, finite checks, zero scaling and input/output alias copying traced."
+resources = "Checked integer byte arithmetic and OS default-memory query lifecycle, including Darwin send-right release. Local mass retains O(nnz) triplets/orders; cold merge retains O(patch count) cursors rather than a dense MPFR matrix. Raw arrays are not a whole-process RSS guarantee."
+performance = "Warm mass/spacing kernel benchmarks not repeated by this agent; normal/fallback asymptotic routes reviewed. Parent full core tests are required for the existing allocation boundaries."
+
+[[files]]
+path = "src/Workflow.jl"
+body_review = "complete"
+domain = "Frequency/source consistency, method thresholds, dense/ACA/MLFMA physical RHS and selected-operator residual interpretation traced. Compression and mesh errors remain separate from solve residual."
+implementation = "All option validation and method/preconditioner dispatch, exact dense retries, result metadata and retained state construction reviewed."
+resources = "Dense matrix/factor/vector preflight and fallback budget closures traced; retained data ceiling passed onward. No new persistent buffers or file resources."
+performance = "Method complexity and MLFMA near-field specialization reviewed; no new warmed all-method scaling sweep by this agent. Parent original sphere/workflow checks supply separate runtime evidence."
+
+[[files]]
+path = "src/solver/Solve.jl"
+body_review = "complete"
+domain = "Complex product/conjugation, row/column power-of-two equilibration, adjoint shift reversal, backward error and physical-matrix refinement identities reviewed."
+implementation = "Read finite product classifiers and exact row paths, dense plan creation/reuse, in-place RHS preservation, external factor physical-matrix requirement, direct/GMRES public dispatch, mass conditioning and patch transforms."
+resources = "Cold exact factor value/byte caps and caller budget callback precede allocation; aliasing physical matrix/RHS copies traced. Opaque native factor workspace is not proved to fit Base.summarysize."
+performance = "Ordinary checked solve uses cached LU with bounded verification; exceptional scalar products/row precision and dense exact retry separated. No new isolated warm solve benchmark in this pass."
+
+[[files]]
+path = "src/solver/IterativeSolve.jl"
+body_review = "complete"
+domain = "Forward/adjoint left/right preconditioning, lossless scale/recovery and selected physical residual normalization reviewed. Dense, sparse and local-mass cancellation classifiers traced into exact residual reductions."
+implementation = "Public validation, restarted memory contract, convergence rejection, true-residual opt-outs and term limits read. Nonfinite computed residuals fail closed."
+resources = "Krylov vectors/Hessenberg preflight, sparse transpose materialization peak and exact term budgets reviewed; cached MPFR vectors restricted by existing workspace ceiling."
+performance = "Exact residual work is row selective and sparse work O(nnz); full core Test17/17tail runtime remains parent full-validation evidence, not replaced by old results."
+
+[[files]]
+path = "src/solver/NearFieldPreconditioner.jl"
+body_review = "complete"
+domain = "Near-field cutoff exact boundary, CSC enumeration, conjugate testing, sparse ILU storage orientation/adjoint, loaded local mass and permutation identities reviewed."
+implementation = "All public builders and applications, diagonal regularization, bounded Green cache/scratch, block/permuted wrappers, loaded pattern union and exact entry recovery read."
+resources = "Reusable block/permutation work is protected by try/finally locks. Installed SparseArrays UMFPACK solve! uses its factor lock; installed IncompleteLU application reads factors and mutates only RHS. Loaded pattern/exact work bounds traced. No forced native allocator RSS guarantee."
+performance = "Two-pass CSC avoids triplet consolidation; loaded LocalMass column buckets avoid N times rescan; matrix-free Green cache is bounded. New broad preconditioner benchmarks not run by this agent."
+
+[[files]]
+path = "src/solver/RetainedSolve.jl"
+body_review = "complete"
+domain = "Repeated forward/adjoint physical operator and RHS contracts traced; selected-operator residual does not certify discretization."
+implementation = "Signature/revision checks before and after solve, all-column transactional commit, excitation invalidation for changed numeric RHS, adjoint forward-state preservation and last_solve semantics reviewed."
+resources = "State work lock serializes reuse; retained old/new RHS/current plus column work charged. Factor/preconditioner data are treated read-only; arbitrary manual mutation of opaque factor internals was not certified."
+performance = "Factor/preconditioner reuse avoids rebuild; full content signature is O(retained payload), a correctness cost explicitly observed in source. No standalone retained-state overhead benchmark in this pass."
+
+[[files]]
+path = "src/error_estimation/GalerkinError.jl"
+body_review = "complete"
+domain = "Derived A=P'ZP, b=P'b, unresolved residual and complete output Schur row using coarse adjoints. Probe selection depends on operator/output rows rather than observed reference error."
+implementation = "Exact/permitted restriction mismatch, rebuild/reuse, origin/coarse revisions, map signatures, batching and selected output validation reviewed. Existing conditioned model suite passes 80 checks after both new fixes."
+resources = "Shared retained data and coarse solve workspace charged; local sparse injection only touches nonzero support; outputs retain shared latent coordinates and cross-row covariance."
+performance = "Batching and sparse dense-column restriction reviewed. No fresh independent large enriched-system scaling benchmark; full protocol fixture remains parent validation."
+
+[[files]]
+path = "src/error_estimation/Conditioning.jl"
+body_review = "complete"
+domain = "Proper-complex inverse-mass whitening, thin information SVD, conditional factor projection, shared samples and quadratic mean/variance derived. Confirmed tiny indefinite variance corruption and infinite consistency certificate fixed."
+implementation = "All construction, model/signature validation, deferred collection, output propagation, sampling and quadratic fallback paths read. New 39+19, mean18, variance27, conditioned80 checks pass."
+resources = "Wide variance contracts original factors through p-by-p covariance using O(p²) storage and O(p²m+p³) work; no latent m-by-m array or perturbed SVD factor. Precision uses six-factor dyadic span and carries, including caller BigFloat precision; wide consistency work separately preflighted."
+performance = "Ordinary conditioning 8.629 to 8.446 us, both11616 bytes; ordinary quadratic p2/m1 0.270 to0.284 us and m128 0.284 to0.284 us, both592 bytes. Cold wide p2 m4 63.43us/135192 bytes; m128 500.87us/1057768 bytes. These are bounded local workloads."
+
+[[files]]
+path = "src/error_estimation/Calibration.jl"
+body_review = "complete"
+domain = "Outward rational field-norm/RCS bounds, augmented order statistic ceil((n+1)(1-epsilon)), whole-case scoring, inclusive pass/strict fail and abstention budgets derived. Provenance does not prove exchangeability."
+implementation = "All public constructors/score/calibration/screen paths, duplicate/overlap IDs, immutable context key and mutable profile signature, missing numerical checks and infinite quantile behavior reviewed."
+resources = "Calibration input plus sort payload preflight traced; exact scalar rational enclosure avoids global rounding state. Six recorded numerical budget categories validated before a resolved decision."
+performance = "Scalar rational work and sorting complexity reviewed. Existing24911 calibration checks passed in the core owner's fresh reset; this agent did not rerun them after the localized conditioning fixes. Parent final full run remains required."
+
+[[files]]
+path = "src/mom2d/Greens2D.jl"
+body_review = "complete"
+domain = "Outgoing H0^(2) sign, small logarithmic J/Y series and disk-integral constant independently derived. Large H1 exact phase expansion now also supplies k² times the disk integral before narrowing."
+implementation = "All scalar validation, coincident-point convention, phase precision, ordinary/series/asymptotic branches and dense D assembly read. New33 plus original272 MoM2D checks pass."
+resources = "D output preflight and bounded asymptotic/series loops reviewed; exact scalar temporary precision scales with supplied coordinate phase."
+performance = "Ordinary4-cell VIE consumer unchanged736 bytes; old/new1.12/0.794us. No large dense D scaling measurement."
+
+[[files]]
+path = "src/mom2d/Assembly2D.jl"
+body_review = "complete"
+domain = "VIE column contrast Z=I-k²Ddiag(chi), equivalent disk self coefficient, checked direct solve and reciprocal-condition exact fallback reviewed. Confirmed large self radial phase error and overflowing ka intermediate fixed."
+implementation = "All range-safe products, constructor preflight, diagonal/offdiagonal formation, factor ownership and full returned VIEResult route reviewed. New test exercises contrasts0,1,-0.25 and actual one-cell solve."
+resources = "Output D/Z and retained LU/field/contrast ceilings plus exact factor larger peak checked before allocation; no additional retained buffers."
+performance = "Ordinary4-cell assembly allocation736 bytes unchanged; new path is cold when ka>128 and k²D cannot safely be formed from stored D."
+
+[[files]]
+path = "src/mom2d/Mie2D.jl"
+body_review = "complete"
+domain = "TM dielectric/PEC/ENZ boundary ratios, n<0 symmetry and angular phase, outward H^(2), J Miller/ratio and Y upward recurrences, matched-medium zero, weak contrast and surface limits reviewed."
+implementation = "All coefficient and field public paths, automatic/explicit nmax, small/high-order/large internal branches, exact observation and cancellation retries read. No additional confirmed bug in this fresh pass."
+resources = "Finite argument/order/precision and quadratic internal pair work bounds, aggregate ordinary field terms/exact observations, output caps and reusable radial sequences traced."
+performance = "Existing272 MoM2D checks passed after the new assembly fix; order>64 uses O(N) sequences rather than repeated recurrence. No new industrial-order benchmark; supported work caps are not an unrestricted speed claim."
+
+[[files]]
+path = "src/mom3d/EMDDA3D.jl"
+body_review = "complete; root owns subsequent corrections"
+domain = "Electric/magnetic dual Green signs and eta normalization, six-component constitutive similarity transform, bianisotropic CM/radiative correction, projected farfields and public incident H=khat cross E/eta derived. One-voxel electric/magnetic cancellation independently confirmed and transferred to root."
+implementation = "All material coercion, exact alpha/field application, scalar/dense/operator paths, direct/GMRES/FFT solve, result validation, dipoles and near/far observation overloads read. Six-column dense blocks agree with scalar entry indexing by construction."
+resources = "Dense6N output and retained/exact solve budgets traced; column-threaded assembly has disjoint writes; matrix-free apply uses local accumulators with explicit alias copy, no shared work. Returned near/far vector caps precede result validation."
+performance = "Ordinary apply avoids thread-spawn overhead; high precision restricted to flagged geometry/product/reductions. No new isolated EM performance benchmark by this agent; root owns EM cancellation CRC and allocation comparison."
+
+[[files]]
+path = "src/mom3d/SurfaceIE3D.jl"
+body_review = "complete"
+domain = "PMCHWT/Muller regional weights, matched forcing weights, principal-value K and local nhat-cross Gram residue, complex-medium prefactors, near vertex/edge quadrature and closed nonperiodic RWG constraints reviewed. Dense weighted regional overflow confirmed and fixed using the scalar matrix-free contraction."
+implementation = "All medium/build/assembly/solve paths, two-pass near adjacency, shared regional geometry, scalar indexing, locked block apply, scaled output, actual direct/matrix-free solves and checked factor wrapper read. New10 plus original158 checks pass."
+resources = "Ten-N² dense block peak retained; new guarded fill adds no dense buffer. Matrix-free seven work vectors and shared EFIE/MFIE geometry charged; lock has finally release and block inputs copied before output mutation. Gram has independent triplet ceiling."
+performance = "Six-RWG PMCHWT1.2515 to1.2469ms,71079 to105655 allocated bytes; Muller1.2552 to1.3537ms,76663 to145879bytes. Profile identifies conservative MPFR retries for exact structural cancellations; follow-up exactness certificate proposed to root, not implemented during source freeze. No all-size SIE optimization claim."
+
+[[findings]]
+candidate = "SVD compression changes a small indefinite quadratic variance"
+dimension = ["domain", "implementation", "resources", "performance"]
+verification = "F=fill(0.5+0im,2,4), mu=0, W=[1 delta;delta -1]; delta=2^-60 old8.1043433e-31 vs analytic4delta²=3.0092655e-36; delta2^-100 old8.073e-31 vs2.4892e-60."
+status = "fixed; local CRC passed; current revision GitHub CI pending"
+fix = "Accumulate original covariance and six-factor contractions at derived dyadic precision before final narrowing; retain existing ordinary and exact-zero routes."
+reverify = "test_quadratic_output_wide_variance.jl39; repeated/phased/Hadamard factors, shifted means, BigFloat6144-bit delta2^-5000, true overflow rejection; existing mean18+variance27+conditioning80 pass."
+
+[[findings]]
+candidate = "Infinite observation norm and residual certify contradictory finite equations"
+dimension = ["domain", "implementation", "resources", "performance"]
+verification = "mass=I2,V=[1 0;1 0],t=[1.5e308,-1.5e308] previously returned mean[-2.8225e292,0] with Inf diagnostics. The scaled equations require equal left sides and opposite unit right sides."
+status = "fixed; local CRC passed; current revision GitHub CI pending"
+fix = "Only finite ordinary inequalities certify consistency; overflow recomputes coupled projection/division and physical equation residual at bounded precision with a separate work preflight."
+reverify = "test_conditioning_observation_range.jl19: contradictory rejection, consistent real/imaginary huge observations, finite-scale physical residual, diagnostics, caller precision and tight budget; conditioned80 pass."
+
+[[findings]]
+candidate = "Large VIE disk self coefficient recomputes a rounded radial phase"
+dimension = ["domain", "implementation", "resources", "performance"]
+verification = "Legitimate one-cell mesh,k1e200,span1:69.4% relative self coefficient error versus exact-phase self integral multiplied by k² in4352 bits; k1e160,span1e150 throws although final interaction finite."
+status = "fixed; local CRC passed; current revision GitHub CI pending"
+fix = "Reuse exact supplied k/radius H1 expansion to form k² times self integral before narrowing, including unrepresentable ka."
+reverify = "test_vie2d_large_self_phase.jl33; original test_mom2d.jl272; independent4352-bit Bessel J/Y evaluation plus widened returned self integral, signed/zero contrasts and public full solve."
+
+[[findings]]
+candidate = "Dense Muller regional products overflow before a finite sum"
+dimension = ["domain", "implementation", "resources", "performance"]
+verification = "Public closed tetrahedron6RWGs,k0=1e-296,eps_in=eps_ext=1,mu_ext=1e308,mu_in=-1e308+1e292im,eta0=1: matrix-free entry1,1 finite~8.98993e295im while dense assembly throws after regional products reach~1e312."
+status = "fixed; local CRC passed; current revision GitHub CI pending"
+fix = "Dense block fills contract regional and local Gram terms together; Gram coefficients use a guarded half-difference before narrowing. Local Gram column order streams in O(N²+nnz), retaining ten-N² matrix peak."
+reverify = "test_surface_sie_weighted_range.jl10:4352-bit independent regional sum, full dense/indexed agreement, mu_ext1e308/mu_in=-1e308-1im Gram half-difference at eta1e-308/k01e-154; original SIE158 pass with4Julia/1BLAS threads."
+
+[[findings]]
+candidate = "One-voxel EM Huygens cancellation is lost before voxel-sum guards"
+dimension = ["domain", "implementation"]
+verification = "Public one-voxel alpha6=I solve,k1,center0,E_z1e16,H_x=-2.654418727984993e13,eta376.730313668,directiony gives FE_z=FH_x=0. Independent(qz+eta*mx)/(4pi) gives FE_z0.006480423207210113,FH_x1.7201756726487096e-5."
+status = "confirmed; root fix and CRC passed as reported by root; this agent made no EM source edit"
+fix = "Root owns per-voxel dual-field contraction and inter-voxel coherent sum correction."
+reverify = "TEMP/diffmom-em-huygens-before.log; root reports new18 coherence/Huygens +original DDA364/EM257/adjoint30 and FFT24/92 pass; EM257/FFT92 rerun after boundary guards. Original EM near/far64 loops remain0 allocated bytes with measured~18/34 percent guard-time cost."
+
+[[discarded_candidates]]
+candidate = "Scoped MPFR precision/rounding causes global cross-task corruption"
+verification = "Installed Julia1.12/1.13 Base mpfr.jl uses task-local ScopedValues; do-block restores caller values. Wider-weight and extreme consistency regressions retain caller precision."
+status = "discarded; no verified defect"
+
+[[discarded_candidates]]
+candidate = "Concurrent sparse/block/permuted preconditioner calls share unprotected work"
+verification = "Block/permuted work protected by try/finally ReentrantLock. Installed SparseArrays UMFPACK factor solve! locks factor; IncompleteLU applications read factors and modify local RHS."
+status = "discarded by implementation/dependency proof; this agent did not add a repeated threaded stress run"
+
+[[evidence]]
+id = "conditioning_and_quadratic_crc"
+status = "passed"
+logs = ["TEMP/diffmom-conditioning-range-crc.log", "TEMP/diffmom-conditioning-range-nearby.log"]
+checks = "19 observation range +39 wide variance +18 mean +27 existing variance/zero +80 conditioned model"
+elapsed = "3.94s,4.13s,0.47s,6.32s,30.32s includes compilation"
+peak_rss_bytes = 695013376
+note = "An initial driver spelling referenced a nonexistent variance file after the first three passed; corrected existing test_quadratic_output_cancellation.jl plus conditioned model ran successfully in the second log."
+
+[[evidence]]
+id = "mom2d_crc"
+status = "passed"
+log = "TEMP/diffmom-vie2d-large-self-crc.log"
+checks = "new33 +original272 (first new30 and original272 in CRC log;3 independent Bessel reference additions rerun in surface-pair-perf log)"
+elapsed = "2.44s +19.71s includes compilation"
+peak_rss_bytes = 1701031936
+
+[[evidence]]
+id = "surface_sie_crc"
+status = "passed"
+log = "TEMP/diffmom-surface-weighted-gram-crc.log"
+checks = "new10 +original158, four Julia threads and one BLAS thread"
+elapsed = "18.18s +15.34s includes compilation"
+peak_rss_bytes = 1121087488
+
+[[evidence]]
+id = "ordinary_and_cold_performance"
+status = "measured local workloads; allocation fast paths unchanged"
+logs = ["TEMP/diffmom-conditioning-perf.log", "TEMP/diffmom-variance-vie-perf.log"]
+method = "Julia1.13.1 Windows, BLAS1; warm twice then GC; median7 batches; exact25174314 prior methods loaded under temporary private names within the same process"
+
+[remaining]
+current_revision_ci = "Root owns commit/push/main and final GitHub focused/full validation; no pass claimed for these uncommitted changes."
+coverage_limits = ["Full core Test17/17tail and broad fresh cross-platform solver regression execution are parent CI evidence", "Opaque native factor allocation lifetime/RSS and arbitrary manual factor mutation not exhaustively certified", "No representative all-problem-size performance target was supplied; measured workloads above are bounded", "Continuum convergence and arbitrary material/geometry proof exceed finite tests"]
