@@ -439,6 +439,14 @@ function _quadratic_output_factor_moments(outputs, weight)
     factor = outputs.square_root
     all(isfinite, factor) ||
         throw(ArgumentError("output square-root factor must be finite"))
+    real_type = isempty(weight) ? Float64 :
+        typeof(real(weight[1, 1] * zero(ComplexF64)))
+    if all(iszero, factor)
+        expected = all(iszero, outputs.mean) ? zero(real_type) :
+            _quadratic_output_bilinear(
+                outputs.mean, weight, outputs.mean, Val(:real), real_type)
+        return (mean=expected, variance=zero(expected))
+    end
     p, m = size(factor)
     if m > p
         # The working Gaussian is defined by this shared factor. Compress
@@ -448,8 +456,6 @@ function _quadratic_output_factor_moments(outputs, weight)
         factor = decomposition.U .* transpose(decomposition.S)
     end
     rank = size(factor, 2)
-    real_type = isempty(weight) ? Float64 :
-        typeof(real(weight[1, 1] * zero(ComplexF64)))
     latent_weight = Matrix{Complex{real_type}}(undef, rank, rank)
     latent_mean = Vector{Complex{real_type}}(undef, rank)
     for column in 1:rank
@@ -487,6 +493,14 @@ function quadratic_output_moments(outputs::ErrorOutputs, weight::AbstractMatrix{
         throw(ArgumentError("output means and covariance must be finite"))
     all(isfinite, weight) && LinearAlgebra.ishermitian(weight) ||
         throw(ArgumentError("quadratic weight must be finite and Hermitian"))
+    if all(iszero, weight)
+        # An exactly zero weight proves both moments vanish, regardless of
+        # covariance scale. Avoid a redundant SVD and latent rank-squared work.
+        all(isfinite, outputs.square_root) ||
+            throw(ArgumentError("output square-root factor must be finite"))
+        value = isempty(weight) ? 0.0 : zero(real(weight[1, 1] * zero(ComplexF64)))
+        return (mean=value, variance=value)
+    end
     weighted_mean = weight * outputs.mean
     product = weight * outputs.covariance
     expected = real(dot(outputs.mean, weighted_mean) + LinearAlgebra.tr(product))

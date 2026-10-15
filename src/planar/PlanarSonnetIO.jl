@@ -3509,6 +3509,8 @@ requested frequency. A project requesting native de-embedding requires an
 explicit calibration object or `raw=true`; saved native calibration records
 alone do not supply a calibrated standard. `grid=(nx,ny)` selects a new raster;
 unrepresented geometry and unsupported material/port/component models fail.
+`max_bytes` bounds owned numerical payload, including the retained raw
+solution while CUP and wall-feed calibration standards are solved.
 Two-sheet TMM conductors are expanded into separated physical faces with
 half-thickness impedances, the existing host dielectric, PEC perimeter ties,
 and a shared external voltage. Other sheet counts and unspecified material
@@ -3605,6 +3607,11 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     result=solve_planar(model.problem,freq;surface_zs=model.sheet_zs,via_sigma=model.via_sigma,remaining...)
     terminal=_sonnet_balanced_y(result.y,model)
     y=terminal.y;voltage_transfer=terminal.voltage_transfer
+    feed_active=!raw && haskey(model,:feed_drp) && (deembed_requested ||
+        any(s->s!==nothing && get(s,:kind,:wall)===:pin,model.feed_drp))
+    if (!raw && !isempty(model.cup_standards)) || feed_active
+        remaining=merge(remaining,(max_bytes=_sonnet_child_solve_budget(result,reserve,limit),))
+    end
     if !raw && !isempty(model.cup_standards)
         # Co-calibrated groups remove their launch-junction admittance.
         # A marginal standard's junction column m is the contracted
@@ -3650,8 +3657,6 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     # (intrinsic to the co-calibrated contract). Both compose after any
     # user-supplied calibration — the calibration sits instrument-side of
     # the port plane, the feed chains board-side.
-    feed_active=!raw && haskey(model,:feed_drp) && (deembed_requested ||
-        any(s->s!==nothing && get(s,:kind,:wall)===:pin,model.feed_drp))
     if feed_active
         chains=_sonnet_wall_feed_chains(model,freq;
             deembed=deembed_requested,remaining...)

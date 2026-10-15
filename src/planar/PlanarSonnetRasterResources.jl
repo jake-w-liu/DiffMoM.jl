@@ -161,3 +161,37 @@ function _sonnet_raster_response_workspace(model)
     return _checked_array_payload_bytes(ComplexF64,
         24np^2+8nr*np+8nc^2+8nc*np+8(nr+np+nc))
 end
+
+# The raw result remains part of SonnetPlanarResult while launch standards
+# run. Its arrays therefore cannot also fund those standards' workspace.
+# Dense fallback currents/factors can own MPFR scalars; count actual stored
+# precision, and visit shared arrays/scalars only once.
+function _sonnet_retained_result_array(array::AbstractArray{Complex{BigFloat}},seen)
+    array in seen && return 0
+    push!(seen,array)
+    bytes=_checked_array_payload_bytes(Complex{BigFloat},length(array))
+    for value in array,component in (real(value),imag(value))
+        component in seen && continue
+        push!(seen,component)
+        bytes=_checked_payload_sum("native retained wide result",bytes,
+            _planar_wide_scalar_payload(precision(component)))
+    end
+    return bytes
+end
+_sonnet_retained_result_array(array,seen)=_subdivision_retained_payload(array,seen)
+
+function _sonnet_retained_solve_payload(result::PlanarResult)
+    seen=Base.IdSet{Any}()
+    return _checked_payload_sum("native retained raw solve",
+        (_sonnet_retained_result_array(array,seen) for array in
+            (result.z_mom,result.lu_fact.factors,result.lu_fact.ipiv,
+                result.currents,result.y,result.s,result.z0,result.relative_residuals))...)
+end
+_sonnet_retained_solve_payload(result)=_subdivision_retained_payload(result)
+
+function _sonnet_child_solve_budget(result,reserve,limit)
+    live=_checked_payload_sum("native retained solve and calibration",reserve,
+        _sonnet_retained_solve_payload(result))
+    _enforce_payload_limit(live,limit,"native retained solve and calibration","max_bytes")
+    return limit-live
+end
