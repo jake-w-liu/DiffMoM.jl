@@ -221,7 +221,7 @@ end
 # Recover (zc, gamma*len) from a symmetric line-section ABCD:
 # A = D = cosh(gl), B = zc*sinh(gl), C = sinh(gl)/zc.  The (s, zc) ->
 # (-s, -zc) ambiguity in B = zc*s is resolved to Re(zc) > 0, and the
-# acosh +/- branch is resolved so that planar_line_abcd(zc, gl)
+# inverse-hyperbolic branch is resolved so that planar_line_abcd(zc, gl)
 # reconstructs the section (fail-closed on non-line sections).
 function _line_params_of_abcd(Tline::AbstractMatrix)
     size(Tline) == (2, 2) || throw(DimensionMismatch(
@@ -235,11 +235,12 @@ function _line_params_of_abcd(Tline::AbstractMatrix)
     determinant = Tline[1, 1] * Tline[2, 2] - Tline[1, 2] * Tline[2, 1]
     abs(determinant - 1) <= 0.05 || throw(ArgumentError(
         "ABCD is not a reciprocal line section (determinant != 1)"))
-    c = (Tline[1, 1] + Tline[2, 2]) / 2
-    s2 = Tline[1, 2] * Tline[2, 1]
-    abs2(s2) > eps(real(abs(s2)))^2 || throw(ArgumentError(
+    c = Tline[1, 1]/2 + Tline[2, 2]/2
+    !iszero(Tline[1, 2]) && !iszero(Tline[2, 1]) || throw(ArgumentError(
         "line section has zero B*C: no propagating mode"))
-    s = sqrt(s2)
+    # B*C can underflow even when sinh(gl) and both stored off-diagonal
+    # entries are representable. Separate square roots retain that scale.
+    s = sqrt(ComplexF64(Tline[1, 2])) * sqrt(ComplexF64(Tline[2, 1]))
     zc = Tline[1, 2] / s
     real(zc) < 0 && (s = -s; zc = -zc)
     isfinite(zc) || throw(ArgumentError(
@@ -250,8 +251,18 @@ function _line_params_of_abcd(Tline::AbstractMatrix)
         throw(ArgumentError(
             "ABCD is not a symmetric line section " *
             "(B/Zc != C*Zc within 5%)"))
-    gl = acosh(c)
-    abs(sinh(-gl) - s) < abs(sinh(gl) - s) && (gl = -gl)
+    # Short sections retain their first-order length in B/C after cosh(gl)
+    # has rounded to one. Invert sinh, then let cosh select the half-plane
+    # branch; both candidates have the retained sinh and differ in cosh's
+    # sign. The phase remains on the principal [-pi,pi] branch.
+    gl = asinh(s)
+    reconstructed_c=cosh(gl)
+    if abs(reconstructed_c-c)>abs(reconstructed_c+c)
+        gl = complex(0.,imag(s)<0 ? -pi : pi)-gl
+        reconstructed_c=-reconstructed_c
+    end
+    abs(reconstructed_c-c) <= 0.05*max(abs(c),1.0) || throw(ArgumentError(
+        "reconstructed line does not match the given section"))
     abs(sinh(gl) - s) <= 0.05 * max(abs(s), 1.0) || throw(ArgumentError(
         "reconstructed line does not match the given section"))
     return zc, gl

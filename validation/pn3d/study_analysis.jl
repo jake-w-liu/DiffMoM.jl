@@ -64,7 +64,8 @@ end
 function _study_field_difference_scales(first_field, second_field, floor_value)
     size(first_field) == size(second_field) ||
         throw(DimensionMismatch("field scale inputs differ"))
-    return [max(norm(view(first_field - second_field, :, look)), floor_value)
+    difference = first_field - second_field
+    return [max(norm(view(difference, :, look)), floor_value)
             for look in axes(first_field, 2)]
 end
 

@@ -15,6 +15,7 @@ julia --project=. validation/po/validate_po_vs_pofacets.jl
 julia --project=. validation/paper/run_convergence_study.jl
 julia --project=. validation/paper/run_beam_steering_case.jl
 julia --project=. validation/scaling/run_cost_scaling.jl
+julia --project=. --startup-file=no validation/scaling/run_hotpath_resources.jl
 julia --project=. validation/robustness/run_robustness_sweep.jl
 
 # External cross-validation
@@ -32,3 +33,10 @@ julia --project=. validation/paper/generate_consistency_report.jl
 Outputs are written to `data/`. Set `DIFFMOM_VALIDATION_OUTPUT_DIR` to route
 the Mie CSV and figure artifacts to another directory without changing the
 validator sources.
+
+The hot-path resource runner measures warmed CPU time and cumulative Julia
+allocations for reusable operators, topology filtering/projection, DDA, 2D VIE,
+Mie, and network conversion. Set `JULIA_NUM_THREADS=1` and
+`OPENBLAS_NUM_THREADS=1` for comparable single-thread measurements. It writes
+`data/hotpath_resources.toml`; an optional argument selects another report
+path. These samples exclude peak process RSS and native-library allocations.

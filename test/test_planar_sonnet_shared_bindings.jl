@@ -102,4 +102,44 @@ end
             DiffMoM._sonnet_project_response_key(realpath(child),b)
     end
 end
+
+@testset "Independent SPROJ tasks retain isolated recursion chains" begin
+    fixture=joinpath(@__DIR__,"fixtures","native_sparam_model_files","native","sparameter.son")
+    mktempdir() do directory
+        parent=joinpath(directory,"parent.son");child=joinpath(directory,"child.son")
+        write(parent,replace(read(fixture,String),"TYPE SPARAM 1"=>
+            "TYPE SPROJ child.son G=8\nINHSWP N"))
+        geometry_child(child)
+        project=read_sonnet_project(parent)
+        expected=only(sonnet_component_files(project,10e9).bindings).response
+        chainkey=DiffMoM._SPROJ_CHAIN_KEY
+        pathkey=DiffMoM._sonnet_project_path_key(realpath(child))
+        @test !haskey(task_local_storage(),chainkey)
+        # Hold one task's active child while an independent task stages
+        # that same valid dependency. This is deterministic on one thread
+        # as well as in threaded test runs; the active task still rejects
+        # a true recursive visit and restores its chain after that failure.
+        task_local_storage(chainkey,Set([pathkey])) do
+            @test_throws ArgumentError sonnet_component_files(project,10e9)
+            independent=Threads.@spawn sonnet_component_files(project,10e9)
+            @test only(fetch(independent).bindings).response==expected
+            @test DiffMoM._sonnet_project_chain()==Set([pathkey])
+        end
+        @test !haskey(task_local_storage(),chainkey)
+        ready=Channel{Nothing}(2);gate=Base.Event()
+        workers=map(1:2) do _
+            Threads.@spawn begin
+                put!(ready,nothing);wait(gate)
+                result=sonnet_component_files(project,10e9)
+                (response=only(result.bindings).response,
+                    cleaned=!haskey(task_local_storage(),chainkey))
+            end
+        end
+        take!(ready);take!(ready);notify(gate)
+        for result in fetch.(workers)
+            @test result.response==expected
+            @test result.cleaned
+        end
+    end
+end
 end

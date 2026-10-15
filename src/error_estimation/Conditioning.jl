@@ -425,6 +425,52 @@ function sample_conditioned_error(
         conditioning.lower, conditioning.permutation, conditioning.tau, latent)
 end
 
+function _quadratic_output_bilinear(left, weight, right, component, ::Type{T}) where {T}
+    if T <: Union{Float32,Float64}
+        return _bilinear_component_bigfloat(left, weight, right, component, T,
+            "quadratic output moment")
+    end
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        _accumulate_bilinear_component_bigfloat(left, weight, right, component)
+    end
+end
+
+function _quadratic_output_factor_moments(outputs, weight)
+    factor = outputs.square_root
+    all(isfinite, factor) ||
+        throw(ArgumentError("output square-root factor must be finite"))
+    p, m = size(factor)
+    if m > p
+        # The working Gaussian is defined by this shared factor. Compress
+        # only its latent coordinates, retaining every singular direction,
+        # before forming a quadratic weight; never allocate an m-by-m array.
+        decomposition = LinearAlgebra.svd(factor; full=false)
+        factor = decomposition.U .* transpose(decomposition.S)
+    end
+    rank = size(factor, 2)
+    real_type = isempty(weight) ? Float64 :
+        typeof(real(weight[1, 1] * zero(ComplexF64)))
+    latent_weight = Matrix{Complex{real_type}}(undef, rank, rank)
+    latent_mean = Vector{Complex{real_type}}(undef, rank)
+    for column in 1:rank
+        right = view(factor, :, column)
+        for row in 1:rank
+            left = view(factor, :, row)
+            latent_weight[row, column] = complex(
+                _quadratic_output_bilinear(left, weight, right, Val(:real), real_type),
+                _quadratic_output_bilinear(left, weight, right, Val(:imag), real_type))
+        end
+        latent_mean[column] = complex(
+            _quadratic_output_bilinear(right, weight, outputs.mean, Val(:real), real_type),
+            _quadratic_output_bilinear(right, weight, outputs.mean, Val(:imag), real_type))
+    end
+    expected = _quadratic_output_bilinear(
+        outputs.mean, weight, outputs.mean, Val(:real), real_type) +
+        real(LinearAlgebra.tr(latent_weight))
+    variance = sum(abs2, latent_weight) + 2sum(abs2, latent_mean)
+    return (mean=expected, variance=variance)
+end
+
 """
     quadratic_output_moments(outputs, W)
 
@@ -435,6 +481,10 @@ or the RCS of the mean current alone.
 function quadratic_output_moments(outputs::ErrorOutputs, weight::AbstractMatrix{<:Number})
     p = length(outputs.mean)
     size(weight) == (p, p) || throw(DimensionMismatch("quadratic weight must be $p by $p"))
+    size(outputs.covariance) == (p, p) && size(outputs.square_root, 1) == p ||
+        throw(DimensionMismatch("output moments and square-root dimensions do not match"))
+    all(isfinite, outputs.mean) && all(isfinite, outputs.covariance) ||
+        throw(ArgumentError("output means and covariance must be finite"))
     all(isfinite, weight) && LinearAlgebra.ishermitian(weight) ||
         throw(ArgumentError("quadratic weight must be finite and Hermitian"))
     weighted_mean = weight * outputs.mean
@@ -442,6 +492,17 @@ function quadratic_output_moments(outputs::ErrorOutputs, weight::AbstractMatrix{
     expected = real(dot(outputs.mean, weighted_mean) + LinearAlgebra.tr(product))
     variance = real(LinearAlgebra.tr(product * product) +
                     2dot(weighted_mean, outputs.covariance * weighted_mean))
+    # Indefinite Hermitian weights can make the trace cancel between large
+    # terms even for a perfectly valid Gaussian covariance. In that case
+    # use the equivalent sum of squared latent weights, which cannot erase
+    # a positive variance by subtracting those squared terms.
+    variance_scale = norm(product)^2 +
+                     2norm(outputs.covariance) * norm(weighted_mean)^2
+    if !isfinite(variance) || !isfinite(variance_scale) ||
+       variance < 0 || variance <= 64eps(Float64) * variance_scale
+        stable = _quadratic_output_factor_moments(outputs, weight)
+        expected, variance = stable.mean, stable.variance
+    end
     isfinite(expected) && isfinite(variance) && variance >= 0 ||
         throw(ArgumentError("quadratic moments exceed the supported numerical range"))
     return (mean=expected, variance=variance)

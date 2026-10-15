@@ -531,6 +531,47 @@ end
     return value + log1p(-exp(-2value)) - log(2.0)
 end
 
+# Keep the exponent's rounding residual until the final product. At sharp
+# continuation stages even a sub-ulp error in beta*(rho-eta) changes a
+# separately representable projection tail.
+@inline function _projection_argument_parts(rho::Float64, beta::Float64, eta::Float64)
+    difference = rho - eta
+    recovered = difference - rho
+    difference_error = (rho - (difference - recovered)) - (eta + recovered)
+    argument = beta * difference
+    residual = fma(beta, difference, -argument) + beta * difference_error
+    return argument, residual
+end
+
+@inline function _projection_continuation_value(rho::Float64, beta::Float64,
+        eta::Float64, normalization::Float64)
+    argument, residual = _projection_argument_parts(rho, beta, eta)
+    decay = exp(-2abs(argument))
+    decay = fma(decay, expm1((argument < 0 ? 2 : -2) * residual), decay)
+    ratio = (-expm1(-2beta * rho)) * normalization / (1 + decay)
+    argument >= 0 && return clamp(ratio, 0.0, 1.0)
+    leading = exp(2argument)
+    if leading < floatmin(Float64)
+        # Scale before rounding the square: a factor up to two can retain
+        # a subnormal projection even if exp(2argument) rounds to zero.
+        half = exp(argument)
+        partial = half * ratio
+        value = partial * half
+        return clamp(fma(partial, half, value * expm1(2residual)), 0.0, 1.0)
+    end
+    value = leading * ratio
+    return clamp(fma(leading, ratio, value * expm1(2residual)), 0.0, 1.0)
+end
+
+@inline function _projection_continuation_derivative(rho::Float64, beta::Float64,
+        eta::Float64, scale::Float64)
+    argument, residual = _projection_argument_parts(rho, beta, eta)
+    half = exp(-abs(argument))
+    half = fma(half, expm1((argument < 0 ? 1 : -1) * residual), half)
+    denominator = 1 + half * half
+    return ((scale * half) * half) / (denominator * denominator)
+end
+
 """
     heaviside_project(rho_tilde, beta, eta=0.5)
 
@@ -572,6 +613,9 @@ function heaviside_project(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
     beta_float > 0x1.0p52 &&
         return _projection_convert_result(
             _heaviside_project_bigfloat(rho_tilde, beta, eta), result_type)
+    continuation = beta_float >= 32.0
+    continuation_normalization = continuation ?
+        (1 + exp(-2beta_float * (1 - eta_float))) / (-expm1(-2beta_float)) : 0.0
     log_denominator_sinh = _projection_logsinh_positive(beta_float)
     log_cosh_right = _projection_logcosh(beta_float * (1 - eta_float))
     previous_rt = -Inf
@@ -580,6 +624,17 @@ function heaviside_project(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
         rt = Float64(rho_tilde[index])
         if iszero(rt)
             result[output_index] = copysign(0.0, rt)
+            continue
+        end
+        if continuation && 0.0 <= rt <= 1.0
+            bounded = _projection_continuation_value(rt, beta_float, eta_float,
+                continuation_normalization)
+            if rt >= previous_rt && bounded < previous_value
+                bounded = previous_value
+            end
+            result[output_index] = bounded
+            previous_rt = rt
+            previous_value = bounded
             continue
         end
         beta_rho = beta_float * rt
@@ -653,12 +708,21 @@ function heaviside_derivative(rho_tilde::AbstractVector, beta::Real, eta::Real=0
     beta_float > 0x1.0p52 &&
         return _projection_convert_result(
             _heaviside_derivative_bigfloat(rho_tilde, beta, eta), result_type)
+    continuation = beta_float >= 32.0
+    continuation_scale = continuation ?
+        (2beta_float * (1 + exp(-2beta_float * eta_float)) *
+         (1 + exp(-2beta_float * (1 - eta_float)))) / (-expm1(-2beta_float)) : 0.0
     common_log = log(beta_float) +
                  _projection_logcosh(beta_float * eta_float) +
                  _projection_logcosh(beta_float * (1 - eta_float)) -
                  _projection_logsinh_positive(beta_float)
     @inbounds for (output_index, index) in enumerate(eachindex(rho_tilde))
         rt = Float64(rho_tilde[index])
+        if continuation && 0.0 <= rt <= 1.0
+            result[output_index] = _projection_continuation_derivative(rt,
+                beta_float, eta_float, continuation_scale)
+            continue
+        end
         argument = beta_float * (rt - eta_float)
         isfinite(argument) ||
             return _projection_convert_result(

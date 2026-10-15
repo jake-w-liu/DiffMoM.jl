@@ -1073,6 +1073,10 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
         h_t_all[t] = sqrt(areas[t]) * sqrt(2.0)
     end
 
+    # The scaling setup may replace both prefactors. Snapshot their final
+    # values so the threaded kernel captures concrete scalars rather than
+    # Core.Box cells, which otherwise allocate on every quadrature reaction.
+    let pref_vec = pref_vec, pref_scl = pref_scl
     Threads.@threads for i in 1:Nobs
         @inbounds begin
         robs = observation_points[i]
@@ -1249,6 +1253,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
         E[3, i] = field[3]
         end  # @inbounds
     end
+    end # concrete prefactor snapshots
 
     if !defer_exact_retries
         nonzero_current_count = count(current ->

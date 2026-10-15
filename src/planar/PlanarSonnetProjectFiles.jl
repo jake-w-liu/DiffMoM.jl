@@ -22,9 +22,11 @@ _sonnet_project_path_key(path)=Sys.iswindows() ? lowercase(path) : path
 # Synchronous geometry-SPROJ solves spawn their own component-files
 # context, so the per-context `active` set cannot see cross-solve
 # recursion (A embeds B which embeds A). This chain carries every
-# project currently on the SPROJ resolution stack; it is restored
-# exactly when each nested solve returns.
-const _SPROJ_CHAIN=Set{String}()
+# project currently on this task's SPROJ resolution stack. Independent
+# tasks must not see one another's active projects as recursion. Dynamic
+# task-local scoping restores the previous chain even when a solve fails.
+const _SPROJ_CHAIN_KEY=gensym(:sonnet_project_chain)
+_sonnet_project_chain()=get(task_local_storage(),_SPROJ_CHAIN_KEY,nothing)::Union{Nothing,Set{String}}
 
 function _sonnet_files_project_source!(projects,path)
     haskey(projects.sources,path) && return projects.sources[path]
@@ -61,7 +63,8 @@ end
 function _sonnet_files_linear_project!(projects::_SonnetLinearProjects,path,np,depth=1,
         bindings::Union{Nothing,Dict{String,Float64}}=nothing)
     key=_sonnet_project_path_key(path)
-    (key in projects.active || key in _SPROJ_CHAIN) &&
+    chain=_sonnet_project_chain()
+    (key in projects.active || (chain!==nothing && key in chain)) &&
         throw(ArgumentError("recursive native project dependency"))
     depth<=projects.max_depth || throw(ArgumentError("native project depth exceeds max_project_depth"))
     response_key=_sonnet_project_response_key(path,bindings)
@@ -84,22 +87,17 @@ function _sonnet_files_linear_project!(projects::_SonnetLinearProjects,path,np,d
             # evaluated at this frequency. Bound names must be declared
             # child variables; their values were already resolved in the
             # parent's scope by the caller. Cross-solve recursion is caught
-            # through _SPROJ_CHAIN because this solve spawns a fresh
+            # through the task's chain because this solve spawns a fresh
             # component-files context that cannot see our `active` set.
             vars=bindings===nothing ? Dict{String,Float64}() : bindings
             for name in keys(vars)
                 haskey(p.variables,name) ||
                     throw(ArgumentError("SPROJ binding names undeclared child variable $name"))
             end
-            global _SPROJ_CHAIN
-            added=[k for k in union(projects.active,[key]) if !(k in _SPROJ_CHAIN)]
-            union!(_SPROJ_CHAIN,added)
-            local result
-            try
-                result=solve_sonnet_project(p,projects.frequency;variables=vars,
+            scoped_chain=chain===nothing ? copy(projects.active) : union(chain,projects.active)
+            result=task_local_storage(_SPROJ_CHAIN_KEY,scoped_chain) do
+                solve_sonnet_project(p,projects.frequency;variables=vars,
                     max_bytes=projects.budget.limit-projects.budget.used)
-            finally
-                for k in added; delete!(_SPROJ_CHAIN,k); end
             end
             sort(abs.(result.port_numbers))==collect(1:np) || throw(ArgumentError(
                 "geometry child port numbers must be exactly 1..$np to map the ordered model pins"))

@@ -24,6 +24,17 @@ using Test, DiffMoM, LinearAlgebra
     transfer=ComplexF64[2e154 1;1.5e308 1e154]
     @test DiffMoM._abcd_of_y(admittance)≈ComplexF64[2e154 1;5e307 1e154] rtol=1e-14
     @test DiffMoM._y_of_abcd(transfer)≈ComplexF64[1e154 -5e307;-1 2e154] rtol=1e-14
+    for bits in (16,128),rounding in (RoundDown,RoundUp)
+        setprecision(BigFloat,bits) do
+            setrounding(BigFloat,rounding) do
+                @test DiffMoM._deembed_product_sum(ComplexF64(1e154,1e154),
+                    ComplexF64(1e154,1e154),ComplexF64(3e307,-1.5e308))≈
+                    ComplexF64(3e307,5e307) rtol=1e-14
+                @test precision(BigFloat)==bits
+                @test Base.rounding(BigFloat)==rounding
+            end
+        end
+    end
     for invalid in (ComplexF64[0 1;0 0],ComplexF64[NaN 1;1 0])
         @test_throws ArgumentError DiffMoM._abcd_of_y(invalid)
     end
