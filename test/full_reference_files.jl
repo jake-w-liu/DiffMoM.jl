@@ -295,4 +295,7 @@ const FULL_REFERENCE_AFTER_CORE = [
     "test_sonnet_reference_snapshot.jl",
     "test_scaled_mixed_reference_inputs.jl",
     "test_meep_reference_table_contract.jl",
+    "test_farfield_q_scaled_product.jl",
+    "test_focused_optimization.jl",
+    "test_focused_native_io.jl",
 ]

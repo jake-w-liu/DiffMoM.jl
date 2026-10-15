@@ -1,0 +1,236 @@
+blas_threads = 1
+cpu = "arrowlake-s"
+julia_threads = 4
+julia_version = "1.13.1"
+kernel = "NT"
+measured_at_unix = 1.792067311714e9
+scope = "Warmed CPU latency and cumulative Julia allocations; excludes peak RSS and native allocation accounting."
+
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "EFIE mul!, 21 RWGs"
+samples = 5
+seconds = 0.0011429
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "Q mul!, 48 RWGs/200 directions"
+samples = 5
+seconds = 0.00011976
+[[measurements]]
+allocated_bytes = 16
+iterations = 5
+name = "radiated power, 200 directions"
+samples = 5
+seconds = 4.92e-6
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "PEC Mie, size parameter 10"
+samples = 5
+seconds = 1.54e-6
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "ACA mul!, 176 RWGs"
+samples = 5
+seconds = 6.428e-5
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "ACA adjoint, 176 RWGs"
+samples = 5
+seconds = 6.72e-5
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "MLFMA mul!, 176 RWGs"
+samples = 5
+seconds = 0.02014978
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "MLFMA adjoint, 176 RWGs"
+samples = 5
+seconds = 0.01914666
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "ACA mul!, 736 RWGs"
+samples = 5
+seconds = 0.0008651
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "ACA adjoint, 736 RWGs"
+samples = 5
+seconds = 0.00077578
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "MLFMA mul!, 736 RWGs"
+samples = 5
+seconds = 0.0210457
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "MLFMA adjoint, 736 RWGs"
+samples = 5
+seconds = 0.02029908
+[[measurements]]
+allocated_bytes = 96878
+iterations = 5
+name = "near field, 40 RWGs/25 points"
+samples = 5
+seconds = 0.00014708
+[[measurements]]
+allocated_bytes = 27765
+iterations = 5
+name = "PO, 32 triangles/72 looks"
+samples = 5
+seconds = 0.00023732
+[[measurements]]
+allocated_bytes = 1211789
+iterations = 5
+name = "PTD, 32 triangles/72 looks"
+samples = 5
+seconds = 0.00115236
+[[measurements]]
+allocated_bytes = 88877
+iterations = 5
+name = "PO, 128 triangles/72 looks"
+samples = 5
+seconds = 0.00081892
+[[measurements]]
+allocated_bytes = 2497958
+iterations = 5
+name = "PTD, 128 triangles/72 looks"
+samples = 5
+seconds = 0.0028342
+[[measurements]]
+allocated_bytes = 6471
+iterations = 5
+name = "density filter, 800 triangles"
+samples = 5
+seconds = 2.828e-5
+[[measurements]]
+allocated_bytes = 6471
+iterations = 5
+name = "filter transpose, 800 triangles"
+samples = 5
+seconds = 4.854e-5
+[[measurements]]
+allocated_bytes = 8071
+iterations = 5
+name = "projection, beta=8.0/N=1000"
+samples = 5
+seconds = 3.342e-5
+[[measurements]]
+allocated_bytes = 8071
+iterations = 5
+name = "derivative, beta=8.0/N=1000"
+samples = 5
+seconds = 1.638e-5
+[[measurements]]
+allocated_bytes = 8071
+iterations = 5
+name = "projection, beta=64.0/N=1000"
+samples = 5
+seconds = 1.088e-5
+[[measurements]]
+allocated_bytes = 8071
+iterations = 5
+name = "derivative, beta=64.0/N=1000"
+samples = 5
+seconds = 9.0e-6
+[[measurements]]
+allocated_bytes = 8071
+iterations = 5
+name = "projection, beta=128.0/N=1000"
+samples = 5
+seconds = 1.098e-5
+[[measurements]]
+allocated_bytes = 8071
+iterations = 5
+name = "derivative, beta=128.0/N=1000"
+samples = 5
+seconds = 6.92e-6
+[[measurements]]
+allocated_bytes = 8071
+iterations = 5
+name = "projection, beta=256.0/N=1000"
+samples = 5
+seconds = 1.056e-5
+[[measurements]]
+allocated_bytes = 8071
+iterations = 5
+name = "derivative, beta=256.0/N=1000"
+samples = 5
+seconds = 6.46e-6
+[[measurements]]
+allocated_bytes = 191632
+iterations = 1
+name = "DDA near-solved mul!, 8 voxels"
+samples = 3
+seconds = 0.0023342
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "DDA random mul!, 8 voxels"
+samples = 5
+seconds = 5.48e-6
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "FFT DDA mul!, 8 voxels"
+samples = 5
+seconds = 1.92e-6
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "FFT EM-DDA mul!, 8 voxels"
+samples = 5
+seconds = 6.62e-6
+[[measurements]]
+allocated_bytes = 13296080
+iterations = 1
+name = "DDA near-solved mul!, 64 voxels"
+samples = 3
+seconds = 0.3041365
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "DDA random mul!, 64 voxels"
+samples = 5
+seconds = 0.0003839
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "FFT DDA mul!, 64 voxels"
+samples = 5
+seconds = 1.878e-5
+[[measurements]]
+allocated_bytes = 0
+iterations = 5
+name = "FFT EM-DDA mul!, 64 voxels"
+samples = 5
+seconds = 6.526e-5
+[[measurements]]
+allocated_bytes = 131326
+iterations = 5
+name = "2D VIE assembly, 64 cells"
+samples = 5
+seconds = 0.00017398
+[[measurements]]
+allocated_bytes = 206044
+iterations = 5
+name = "2D VIE solve, 64 cells"
+samples = 5
+seconds = 0.00027976
+[[measurements]]
+allocated_bytes = 132990
+iterations = 5
+name = "network conversion, 64 ports"
+samples = 5
+seconds = 0.00013766

@@ -19,6 +19,25 @@ function _check_fft_plan_reuse(operator, direct)
     @test fetch.(tasks) ≈ [reference, 2im*reference] rtol=1e-12
 end
 
+@testset "Legacy typed FFT constructors retain field conversion" begin
+    grid = VoxelGrid3D((-.2,.2), (-.2,.2), (-.2,.2), 2, 1, 1)
+    electric = fft_dda_operator_3d(grid, 1., 2.)
+    converted = FFTDDAOperator3D{typeof(electric.eps_r),typeof(electric.alpha)}(
+        grid, 1, Float32.(real.(electric.eps_r)), electric.alpha, 0,
+        electric.kernel, ComplexF32.(electric.qhat), ComplexF32.(electric.conv),
+        ReentrantLock())
+    @test converted.k0 === 1. && !converted.radiative_correction
+    _check_fft_plan_reuse(converted, dda_operator_3d(grid, 1., 2.))
+
+    magnetic = fft_em_dda_operator_3d(grid, 1., 2., 1.)
+    kernel = fft_em_dda_kernel_3d(grid, 1.; eta0=376)
+    converted_em = FFTEMDDAOperator3D{typeof(magnetic.alpha)}(
+        grid, 1, magnetic.alpha, 0, kernel, ComplexF32.(magnetic.qhat),
+        ComplexF32.(magnetic.conv), ReentrantLock(), 376)
+    @test converted_em.k0 === 1. && converted_em.eta0 === 376.
+    _check_fft_plan_reuse(converted_em, Matrix(converted_em))
+end
+
 @testset "FFT operators reuse batched plans without matvec allocations" begin
     for dims in ((2,1,1), (2,2,2))
         grid = VoxelGrid3D((-.2,.2), (-.2,.2), (-.2,.2), dims...)

@@ -366,19 +366,25 @@ for (j, theta_deg) in enumerate(theta_sweep_deg)
     kx_inc = k * sin(theta) * cos(phi_inc)
     ky_inc = k * sin(theta) * sin(phi_inc)
     lattice_a = PeriodicLattice(dx_cell, dy_cell, theta, phi_inc, k)
+    # Periodic boundary basis coefficients and their mass matrices carry
+    # the incidence Bloch phase.
+    rwg_a = build_rwg_periodic(mesh, lattice_a; precheck=false)
+    Mt_a = precompute_triangle_mass(mesh, rwg_a)
+    Z_pen_pec_a = assemble_Z_penalty(Mt_a, rho_bar_pec, config)
+    Z_pen_opt_a = assemble_Z_penalty(Mt_a, rho_bar_final, config)
 
     println("  [$j/$(length(theta_sweep_deg))] θ=$(round(theta_deg, digits=1))° ...")
 
-    Z_per_a = Matrix{ComplexF64}(assemble_Z_efie_periodic(mesh, rwg, k, lattice_a))
+    Z_per_a = Matrix{ComplexF64}(assemble_Z_efie_periodic(mesh, rwg_a, k, lattice_a))
     pw_a = make_plane_wave(Vec3(kx_inc, ky_inc, -kz_inc), 1.0, Vec3(pol_te...))
-    v_a = Vector{ComplexF64}(assemble_excitation(mesh, rwg, pw_a))
+    v_a = Vector{ComplexF64}(assemble_excitation(mesh, rwg_a, pw_a))
 
-    I_pec_a = lu(Z_per_a + Z_pen_pec) \ v_a
-    I_opt_a = lu(Z_per_a + Z_pen_opt) \ v_a
+    I_pec_a = lu(Z_per_a + Z_pen_pec_a) \ v_a
+    I_opt_a = lu(Z_per_a + Z_pen_opt_a) \ v_a
 
-    modes_pec_a, R_pec_a = reflection_coefficients(mesh, rwg, Vector{ComplexF64}(I_pec_a), k, lattice_a;
+    modes_pec_a, R_pec_a = reflection_coefficients(mesh, rwg_a, Vector{ComplexF64}(I_pec_a), k, lattice_a;
                                                    pol=pol_te, E0=1.0)
-    modes_opt_a, R_opt_a = reflection_coefficients(mesh, rwg, Vector{ComplexF64}(I_opt_a), k, lattice_a;
+    modes_opt_a, R_opt_a = reflection_coefficients(mesh, rwg_a, Vector{ComplexF64}(I_opt_a), k, lattice_a;
                                                    pol=pol_te, E0=1.0)
 
     prop_count_pec = count(m -> m.propagating, modes_pec_a)

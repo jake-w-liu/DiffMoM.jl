@@ -124,3 +124,101 @@ command = "JULIA_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 julia --project=. --startu
 result = "PASS, 281.393 seconds; Aqua, ExplicitImports and focused scientific/resource regressions included."
 log = "TEMP/diffmom-reset-batch3-focused.log"
 limits = "The audit remains active for the independently confirmed Q scaling defect, remaining examples and final GitHub full validation."
+
+[[companion_body_review]]
+area = "pn3d"
+files = ["validation/pn3d/compare_reference_fields.jl", "validation/pn3d/export_reference_cases.jl", "validation/pn3d/export_validation_table.jl", "validation/pn3d/generate_population.jl", "validation/pn3d/nearfield_probe_experiment.jl", "validation/pn3d/panel_geometry_figure.jl", "validation/pn3d/pilot.jl", "validation/pn3d/population_geometry_preflight.jl", "validation/pn3d/profile_outputs.jl", "validation/pn3d/reference_backend_comparison.jl", "validation/pn3d/reference_population.jl", "validation/pn3d/reference_solver_diagnostic.jl", "validation/pn3d/sphere_validation.jl", "validation/pn3d/study_analysis.jl", "validation/pn3d/study_numerical_checks.jl", "validation/pn3d/study_predictions.jl", "validation/pn3d/test_validation_table.jl"]
+domain = "Fresh complete body review; formulas, comparison conventions and field/report units traced."
+implementation = "Input validation, CLI flags, file identities, failure handling and callers reviewed; confirmed defects have dedicated findings above or in IO companion ledger."
+resources = "Checked bounded read/output paths, array growth and temporary-file cleanup where applicable."
+performance = "Source/complexity review; large population and external solver studies were not rerun."
+verification = "All 27 Python contracts passed; existing Julia scientific/reference coverage is assigned to full validation. Meep regeneration runner received separate IO review and 18 checks. No external solver scientific-equivalence claim."
+
+[[companion_body_review]]
+area = "bempp"
+files = ["validation/bempp/_bempp_common.py", "validation/bempp/compare_impedance_operator_aligned.py", "validation/bempp/compare_impedance_to_julia.py", "validation/bempp/compare_pec_to_julia.py", "validation/bempp/plot_impedance_comparison.py", "validation/bempp/run_impedance_case_julia_reference.jl", "validation/bempp/run_impedance_cross_validation.py", "validation/bempp/run_impedance_operator_aligned_benchmark.py", "validation/bempp/run_impedance_validation_matrix.py", "validation/bempp/run_pec_cross_validation.py", "validation/bempp/run_pec_field_case.py", "validation/bempp/sweep_impedance_conventions.py"]
+domain = "Fresh complete body review; formulas, comparison conventions and field/report units traced."
+implementation = "Input validation, CLI flags, file identities, failure handling and callers reviewed; confirmed defects have dedicated findings above or in IO companion ledger."
+resources = "Checked bounded read/output paths, array growth and temporary-file cleanup where applicable."
+performance = "Source/complexity review; large population and external solver studies were not rerun."
+verification = "All 27 Python contracts passed; existing Julia scientific/reference coverage is assigned to full validation. Meep regeneration runner received separate IO review and 18 checks. No external solver scientific-equivalence claim."
+
+[[companion_body_review]]
+area = "meep"
+files = ["validation/meep/_meep_common.py", "validation/meep/analyze_meep_detailed_comparison.py", "validation/meep/compare_periodic_to_julia.py", "validation/meep/meep_validation_figure.jl", "validation/meep/regen_mom_reference_table.jl", "validation/meep/run_checkerboard_julia_reference.jl", "validation/meep/run_periodic_case_julia_reference.jl", "validation/meep/run_periodic_cross_validation.py", "validation/meep/run_reflectance_curve_comparison.py"]
+domain = "Fresh complete body review; formulas, comparison conventions and field/report units traced."
+implementation = "Input validation, CLI flags, file identities, failure handling and callers reviewed; confirmed defects have dedicated findings above or in IO companion ledger."
+resources = "Checked bounded read/output paths, array growth and temporary-file cleanup where applicable."
+performance = "Source/complexity review; large population and external solver studies were not rerun."
+verification = "All 27 Python contracts passed; existing Julia scientific/reference coverage is assigned to full validation. Meep regeneration runner received separate IO review and 18 checks. No external solver scientific-equivalence claim."
+
+[[companion_body_review]]
+area = "root remaining examples"
+files = ["examples/01_pec_plate_basics.jl", "examples/05b_aca_scaling.jl", "examples/06_aircraft_rcs.jl", "examples/07_pattern_feed.jl", "examples/09a_aircraft_po.jl", "examples/10_mlfma_scaling.jl", "examples/11_mlfma_finer.jl", "examples/12_plate_rcs_stl_roundtrip.jl", "examples/experiments.jl"]
+domain = "Fresh complete body review of these nine examples: EFIE/ACA/MLFMA setup, dipole pattern approximation, analytical polarized plate PO, STL quantization and peak-phasor power units."
+implementation = "Reviewed public API calls, mesh availability errors, refinement limits, solver settings, observation cuts and plotting/output paths. Fixed undefined Example09a gmres_maxiter_for helper. Its actual source definition passes both iteration-budget boundary checks; optional aircraft OBJ remains absent."
+resources = "Fixed meshes and explicit refinement/unknown caps reviewed; existing large-memory estimates remain workload-specific. Native files/plots are written only by explicitly launched examples."
+performance = "No full-aircraft throughput claim. Example12 actually solved 1798 RWGs, emitted CSVs and rendered its PNG; assembly was 1.90 seconds with four Julia threads and one BLAS thread."
+verification = "Example07 complete run passed with corrected far-field units and explicit far-pattern approximation. Example12 complete run passed residual 1.85e-15, PO/formula error 7.06e-15 and energy ratio 1.0134. Example09a helper boundary checks passed; aircraft studies not run."
+
+[[finding]]
+candidate = "Example07 labels dipole-normalized field as RCS and misstates dipole moment units"
+dimension = "scientific units and example interpretation"
+verification = "bistatic_rcs divided the electric far-field by norm(moment), whose declared electric-dipole unit is C*m rather than the required plane-wave E0 in V/m; the example comment also called the same electric moment A*m."
+status = "fixed and end-to-end example run passed"
+fix = "Report max/min |r E_s| in volts and radiated power in watts; retain the configured moment with correct C*m label and explain missing near-field terms at the dipole axial null."
+reverify = "TEMP/diffmom-reset-example07.log: complete 65-RWG pattern and plane-wave runs; pattern radiated/input power ratio0.9988. Large near-axis pattern/direct differences remain displayed as approximation differences, not a false agreement claim."
+
+[[finding]]
+candidate = "Example12 scalar PO plate formula omits the transverse polarization factor"
+dimension = "scientific formula and validation oracle"
+verification = "Independent triangle PO at theta30/60 phi0 agrees with cos(theta)^2 times the old scalar formula (ratios0.75/0.25); phi90 ratio1. TEMP/diffmom-reset-plate-po-formula.log."
+status = "fixed; full 1798-RWG example, CSV and PNG generation passed"
+fix = "Include the transverse projection factor as a stable sum of squares. Use actual Float32-STL-imported rectangle dimensions in the analytical oracle. Replace an arbitrary0.5dB MoM/PO model-agreement gate with a strict independent triangle-PO/formula gate; keep numerical residual, resolution and energy gates."
+reverify = "Actual default example: PO/formula relative error7.06e-15, EFIE residual1.85e-15, energy ratio1.0134. Reported central-lobe MoM/PO max difference0.82005dB includes model effects and is retained in CSV. TEMP/diffmom-reset-example12.log."
+
+[[verification]]
+kind = "independent physical covariance and similarity"
+result = "41 assertions passed; proper rotation, rigid translation phase and length/wavenumber similarity for surface EFIE/RWG/RHS/far fields and direct/FFT DDA, solved fields and near/far outputs."
+log = "TEMP/diffmom-reset-independent-similarity.log"
+peak_rss_bytes = 602001408
+limits = "Independent physical-identity checks; not a universal accuracy proof. Initial driver API mistakes were corrected before counting this result; no production defect was inferred from them."
+
+[[verification]]
+kind = "actual Julia impedance CLI mesh controls"
+command = "julia --project=. validation/bempp/run_impedance_case_julia_reference.jl --nx2 --ny3 --n-theta3 --n-phi4 --output-prefix reset_audit_tiny_20261015 (flags passed as separate argv tokens)"
+result = "PASS: actual12triangles/13RWGs; JSON records structured_nx2 andstructured_ny3; relative solve residual1.878950999164081e-16."
+log = "TEMP/diffmom-reset-impedance-cli.log"
+limits = "Actual Julia solver execution; no external Bempp execution."
+
+[[verification]]
+kind = "final serialized local correctness and hotpath run"
+result = "PASS:2786 assertions =43Q+32FFT+436exactpole+2234triangleoracle+41independentphysicalidentities;38 warmed hotpath rows generated."
+log = "TEMP/diffmom-reset-final-local-checks.log"
+artifact = "validation/audit/reset_hotpath_resources.toml"
+julia_threads = 4
+blas_threads = 1
+peak_rss_bytes = 792428544
+limits = "Current Q constructor/opaque-child compatibility follow-up receives its own subsequent targeted checks. This is not a successful latest Pkg.test claim: two package attempts stopped in Aqua's nested precompile when Windows could not map sys.dll under host paging pressure. GitHub must execute complete package-quality and focused checks on the final pushed source."
+
+[[verification]]
+kind = "current hotpath resource interpretation"
+result = "Forward/adjoint ACA and MLFMA at176/736RWGs; ordinary Q, EFIE, random DDA and FFT DDA/EM-DDA at8/64voxels allocate0 warmed Julia bytes. FFT DDA8/64 took1.92/18.78us; EM FFT8/64 took6.62/65.26us in this four-thread host run."
+limits = "These are workload-specific timings under host memory pressure, not cross-run speedup estimates. Cancellation-sensitive solved DDA still takes the conservative wide path:8voxels191632B/2.33ms and64voxels13296080B/304ms. Allocating public field/filter/solve APIs also retain their reported output storage. Native FFT planning/storage is outside these Julia-allocation numbers."
+
+[[verification]]
+kind = "final Q compatibility closure after serialized root run"
+result = "61/61 targeted checks pass after preserving generic-child Number scaling and default constructor conversions, including final nonstrided-view alias guard."
+log = "TEMP/diffmom_q_constructor_and_generic_scale_crc.log"
+peak_rss_bytes = 410820608
+limits = "Opaque matrix-free children retain the existing contract of certified finite child products followed by wider scaling; an unsupported exceptional child product still rejects explicitly. Final GitHub checks must pass this source."
+
+[[verification]]
+kind = "final independent resource-lifetime route after last source fix"
+result = "18/18 checks pass: cached FFT buffers/plans survive forced GC while owned, become collectible after operator release, preserve post-exception lock reuse and concurrent products for electric and electric-magnetic operators. No new confirmed defect in this independent route."
+log = "TEMP/diffmom-reset-fft-plan-lifetime.log"
+julia_threads = 4
+blas_threads = 1
+elapsed_test_seconds = 7.4
+peak_rss_bytes = 622280704
+limits = "Julia-object weak-reference lifetime and bounded native execution only; this does not bound opaque native FFTW cache memory at every scale."

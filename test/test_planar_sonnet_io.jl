@@ -773,7 +773,13 @@ end
         write(path,replace(template,"GNDREF FLOAT"=>"GNDREF BOX AUTO"))
         boxref=read_sonnet_project(path)
         @test only(sonnet_calibration_groups(boxref)).groundref===:box_auto
-        @test_throws ArgumentError solve_sonnet_project(boxref,1e9;mx=16,my=16)
+        # CUP-only geometry attaches its generated BOX return sources before
+        # solving. The old empty ordinary-port rejection was intermediate
+        # staging, not an unsupported physical configuration. This closed PEC
+        # one-port network must have a finite, lossless reflection.
+        boxed=solve_sonnet_project(boxref,1e9;mx=16,my=16,max_bytes=4*1024^2)
+        @test boxed.port_numbers==[1] && size(boxed.s)==(1,1) && all(isfinite,boxed.s)
+        @test abs(only(boxed.s))≈1 rtol=1e-12
     end
 end
 

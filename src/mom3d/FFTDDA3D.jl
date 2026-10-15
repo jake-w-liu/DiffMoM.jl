@@ -60,10 +60,19 @@ function _fft_dda_plans_3d(qhat, conv)
 end
 
 function FFTDDAOperator3D{TEps,TAlpha}(
-        grid::VoxelGrid3D, k0::Float64, eps_r::TEps, alpha::TAlpha,
-        radiative_correction::Bool, kernel::FFTDDAKernel3D,
-        qhat::Array{ComplexF64,4}, conv::Array{ComplexF64,3},
-        work_lock::ReentrantLock) where {TEps<:AbstractVector,TAlpha<:AbstractVector}
+        grid, k0, eps_r, alpha, radiative_correction, kernel,
+        qhat, conv, work_lock) where {TEps<:AbstractVector,TAlpha<:AbstractVector}
+    # Preserve the former typed inner constructor's field conversions before
+    # creating native plans tied to the converted work arrays.
+    grid = convert(VoxelGrid3D, grid)
+    k0 = convert(Float64, k0)
+    eps_r = convert(TEps, eps_r)
+    alpha = convert(TAlpha, alpha)
+    radiative_correction = convert(Bool, radiative_correction)
+    kernel = convert(FFTDDAKernel3D, kernel)
+    qhat = convert(Array{ComplexF64,4}, qhat)
+    conv = convert(Array{ComplexF64,3}, conv)
+    work_lock = convert(ReentrantLock, work_lock)
     plans = _fft_dda_plans_3d(qhat, conv)
     return FFTDDAOperator3D{TEps,TAlpha,typeof(plans)}(
         grid, k0, eps_r, alpha, radiative_correction, kernel, qhat, conv,
@@ -131,10 +140,17 @@ struct FFTEMDDAOperator3D{TAlpha<:AbstractVector,TPlans} <: AbstractMatrix{Compl
 end
 
 function FFTEMDDAOperator3D{TAlpha}(
-        grid::VoxelGrid3D, k0::Float64, alpha::TAlpha,
-        radiative_correction::Bool, kernel::FFTEMDDAKernel3D,
-        qhat::Array{ComplexF64,4}, conv::Array{ComplexF64,3},
-        work_lock::ReentrantLock, eta0::Float64) where {TAlpha<:AbstractVector}
+        grid, k0, alpha, radiative_correction, kernel,
+        qhat, conv, work_lock, eta0) where {TAlpha<:AbstractVector}
+    grid = convert(VoxelGrid3D, grid)
+    k0 = convert(Float64, k0)
+    alpha = convert(TAlpha, alpha)
+    radiative_correction = convert(Bool, radiative_correction)
+    kernel = convert(FFTEMDDAKernel3D, kernel)
+    qhat = convert(Array{ComplexF64,4}, qhat)
+    conv = convert(Array{ComplexF64,3}, conv)
+    work_lock = convert(ReentrantLock, work_lock)
+    eta0 = convert(Float64, eta0)
     plans = _fft_dda_plans_3d(qhat, conv)
     return FFTEMDDAOperator3D{TAlpha,typeof(plans)}(
         grid, k0, alpha, radiative_correction, kernel, qhat, conv,

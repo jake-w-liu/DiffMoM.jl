@@ -157,7 +157,6 @@ lattice_design = PeriodicLattice(dx_cell, dy_cell, 0.0, 0.0, 2π / lambda_design
 rwg = build_rwg_periodic(mesh, lattice_design; precheck=false)
 Nt = ntriangles(mesh)
 N = rwg.nedges
-Mt = precompute_triangle_mass(mesh, rwg)
 
 rho_relaxed_file = joinpath(DATA_DIR, "results_rho_final.csv")
 isfile(rho_relaxed_file) || error(
@@ -245,11 +244,14 @@ for fghz in freqs_ghz
         abs(dot(pol_te, k_hat)) < 1e-12 || error("TE polarization not transverse at theta=$theta_deg")
 
         lattice = PeriodicLattice(dx_cell, dy_cell, theta, phi, k)
-        Z_per = Matrix{ComplexF64}(assemble_Z_efie_periodic(mesh, rwg, k, lattice))
+        # Boundary basis phases and their mass matrices depend on this case.
+        case_rwg = build_rwg_periodic(mesh, lattice; precheck=false)
+        case_Mt = precompute_triangle_mass(mesh, case_rwg)
+        Z_per = Matrix{ComplexF64}(assemble_Z_efie_periodic(mesh, case_rwg, k, lattice))
         pw = make_plane_wave(Vec3(kx, ky, -kz), 1.0, Vec3(pol_te...))
-        v = Vector{ComplexF64}(assemble_excitation(mesh, rwg, pw))
+        v = Vector{ComplexF64}(assemble_excitation(mesh, case_rwg, pw))
         grid_ff = make_sph_grid(20, 40)
-        G = radiation_vectors(mesh, rwg, grid_ff, k)
+        G = radiation_vectors(mesh, case_rwg, grid_ff, k)
         pol_ff = pol_te_matrix(grid_ff)
         spec_dir = Vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta))
         mask_spec = direction_mask(grid_ff, spec_dir; half_angle=10 * π / 180)
@@ -257,7 +259,7 @@ for fghz in freqs_ghz
 
         local_res = Dict{String, NamedTuple}()
         for c in cases
-            local_res[c.name] = get_case_result(c.name, c.rho, Z_per, mesh, rwg, Mt, k, lattice, v, Q_spec,
+            local_res[c.name] = get_case_result(c.name, c.rho, Z_per, mesh, case_rwg, case_Mt, k, lattice, v, Q_spec,
                                                 dx_cell, dy_cell, pol_te)
         end
 
@@ -300,7 +302,7 @@ for fghz in freqs_ghz
                         max(norm(r_relaxed.v), 1e-30)
             J_dir = r_relaxed.J_spec
             J_gm = real(dot(I_gmres, Q_spec * I_gmres))
-            modes_g, R_g = reflection_coefficients(mesh, rwg, Vector{ComplexF64}(I_gmres), k, lattice;
+            modes_g, R_g = reflection_coefficients(mesh, case_rwg, Vector{ComplexF64}(I_gmres), k, lattice;
                                                    pol=pol_te, E0=1.0)
             idxg = findfirst(m -> m.m == 0 && m.n == 0, modes_g)
             idxg === nothing && error("Specular mode missing in GMRES cross-check")

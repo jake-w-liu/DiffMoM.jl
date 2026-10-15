@@ -230,3 +230,46 @@ status = "complete fresh diff/context review; one additional verified defect tra
 files = ["src/assembly/CompositeOperator.jl", "src/assembly/SingularIntegrals.jl", "src/assembly/Excitation.jl", "src/assembly/PeriodicEFIE.jl", "src/basis/PeriodicGreens.jl", "src/assembly/GroundedEFIE.jl", "src/optimization/MultiAngleRCS.jl", "src/optimization/DensityFiltering.jl"]
 result = "Borrowed mutable-storage scan, alpha-beta joint products, weighted pre-narrowing bilinear contraction, FMA/TwoSum primitive certificate, exact filter-cell floor and pattern phasor projection policies checked. The saturated2im*kz denominator defect was independently reproduced through public greens_periodic_correction and transferred to core; owner applied division-first fix and regression. No additional verified defect after that source correction."
 limits = "This is independent review of changed code and neighboring contracts, not a replacement claim of whole-body ownership for these8 files. Current full remote validation remains parent evidence."
+
+
+[[evidence]]
+id = "independent_q_scaled_product_closure"
+status = "49 passed; final changed-code and neighboring-contract review found no additional confirmed issue after owner fixes"
+files = ["src/optimization/QMatrix.jl"]
+log = "TEMP/diffmom-q-independent-final.log"
+elapsed_seconds = 5.6
+peak_rss_bytes = 500584448
+configuration = "Julia1.13.1 Windows, four Julia threads and one BLAS thread; small explicit matrices only"
+domain = "Separate26000-bit oracle forms polarized G'WG directly from primitive factors, then applies alpha and beta before final ComplexF64 conversion. Masked genuinely complex cases exercise both factorized-storage branches; dyadic extreme-scale and cancellation cases match bitwise. Ordinary rounded output uses8eps relative tolerance, with no spurious demand for universal correct rounding."
+implementation = "Reviewed changed joint alpha/beta wide reduction, original owned BigFloat significands, nested SumQ original-factor contractions, dimension/failure transactions, external input-output alias and legal shared-child operator. Supplied child workspaces, coefficient storage and sibling storage aliases reject before publishing or mutating an operator. Constructor graph validates every known read/write array once; ordinary calls check external input/output against retained scratch."
+resources = "Reviewed seven-factor dyadic-span precision, reduction carry bound and available-memory preflight for MPFR significands/live vectors; tested immutable caller output after actual overflow and beta-only overflow. Twelve concurrent repeated outputs on each Q and SumQ agree with the oracle; locks recover after failure."
+performance = "No new whole-code optimization claim. Original certified factorized path and its buffer reuse remain; owner test explicitly measures ordinary0B allocations and parent owns final focused/full CI. Independent driver intentionally exercises small bounded cold paths rather than large benchmark workloads."
+limits = "This independently reviews the changed Q code and neighboring contracts; whole-body Q ownership remains core_scattering. Large arbitrary tree/operator workloads and final remote validation remain parent evidence."
+
+[[transferred_finding]]
+id = "q_owned_scale_precision"
+verification = "Unit scalar objective, x=y=1,24000-bit alpha=2^20000+1 and beta=-2^20000 under ordinary caller precision returned0 instead of1. TEMP/diffmom-q-wide-scale-before.log."
+owner = "core_scattering"
+closure = "Owner derives joint original-factor precision from actual stored scalar spans; final independent nested Q/SumQ oracle cases pass."
+
+[[transferred_finding]]
+id = "q_retained_workspace_aliases"
+verification = "Retained legacy workspace as input returned0 instead of1; as output with alpha2,beta4,y3 returned6 instead of14. Composite child retained workspace repeated the6-versus14 failure. Workspace sharing pol via reshape erased polarization and returnedzero instead of[6,12,18]. Supplied SumQ work sharing scalar matrix child erased it and returned0 instead of2. Logs TEMP/diffmom-q-workspace-alias-before.log, diffmom-q-independent-final.log, diffmom-q-coefficient-work-alias.log and diffmom-sumq-coefficient-work-alias.log."
+owner = "core_scattering"
+closure = "Full constructor graph rejects write/read and distinct write/write overlap across parent, child and siblings, deduplicating the same shared child. Runtime recursive external-vector guard rejects retained scratch aliases before mutation. Final independent49-check pass includes these contracts."
+
+[[discarded_candidate]]
+id = "q_ordinary_exact_rounding_oracle"
+verification = "One finite borrowed-factor case differed from the26000-bit result by one Float64 ulp. The ordinary certified path does not promise universally correct rounding, and the value was within8eps. That exact-equality oracle was rejected; extreme dyadic and cancellation assertions remained exact. Corrected complete49-check driver passed."
+
+
+[[evidence]]
+id = "full_worker_shared_fixture_isolation"
+status = "Static CRC passed; parent serial process owns current standalone consumer execution"
+files = ["test/helpers/workflow_spice_y.jl", "test/helpers/conformal_pulse_moments.jl", "test/test_planar_vectorfit.jl", "test/test_planar_exact_pole_grouping.jl", "test/test_planar_conformal_pulse_area.jl", "test/test_planar_triangle_moment_reuse.jl"]
+verification = "Actual a313ce full-shard5 failure reported undefined_workflow_spice_y in exact-pole regression. Source/group-map proof also found triangle-moment consumer calls Main.ConformalPulseAreaTests.series_moments across separate worker groups. Exact original independent oracle bodies are now shared explicitly."
+fix = "Extract unchanged_workflow_spice_y function into guarded helpers/workflow_spice_y.jl; extract unchanged exact_area and series_moments plus Rational{BigInt}Q constant into guarded helpers/conformal_pulse_moments.jl. Both providers and both consumers explicitly include their helper; remove inherited parent/Main lookups. No new test process or duplicated test execution introduced."
+static_crc = "Python source comparison confirms all3 function bodies, comments and Q constant exactly match HEAD providers; all113 assertion/testset source lines across4 files remain identical. git diff--check clean."
+independent_scan = "Scanned all top-level test Julia files for underscore function providers/references and142 test module names/qualified references, plus Main/parentmodule/getfield use. Sole underscore residual was_nexxim_csv_s mentioned only in a docstring; qualified PreviousGeometry homonyms are independently defined inside each consumer file. No additional verified inherited fixture found. IO agent separately confirmed conformal dependency and performs broader symbol scan."
+resources = "No Julia launched during parent memory pressure. Parent runs actual standalone exact-pole and triangle-moment consumers in one serial process to avoid concurrent compiler-state retention. Optional tiny independent oracle CRC prepared but not launched because parent covers actual consumers."
+remaining = "Root serial runtime result and final main push/GitHub full shards are required; static scan is not an execution-proof claim."

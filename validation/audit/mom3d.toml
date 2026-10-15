@@ -78,3 +78,10 @@ fix = "Operators retain concretely typed ESTIMATE plans; one batched transform c
 reverify = "New plan reuse20, scaled source24 and original four-thread FFT100 checks passed, including aliased input/output, nonzero beta, range fallbacks, custom operator constructors and concurrent reuse; peak RSS1060007936 bytes. TEMP/diffmom-reset-fft-plan-crc.log"
 measurement = "8 voxels: DDA61.733 to1.916 microseconds, 2304 to0 bytes; EM132.813 to6.626 microseconds,4608 to0 bytes. 64 voxels: DDA94.811 to18.744 microseconds,2304 to0 bytes; EM194.117 to46.367 microseconds,4608 to0 bytes. Minimum of five samples,100 warmed iterations each. TEMP before/after logs label the time ns incorrectly; the recorded formula yields microseconds and the values here use the correct units. Timing is local CPU latency, not a cross-platform guarantee."
 resources = "Plan/native metadata are additional persistent construction resources; max_storage_bytes continues to describe documented persistent array payload, not FFTW/native memory or whole-process RSS. ESTIMATE avoids timing-based planning or destruction of initial buffers."
+
+[[verification]]
+kind = "legacy FFT typed-constructor conversion follow-up"
+verification = "Exact former generated structs accept Int k0 and convertible fields; strict cached-plan compatibility methods rejected them. IO independently reproduced both operator types."
+fix = "Restore typed legacy-arity generic arguments and convert every declared field in order before creating plans for the converted buffers; preserve inferred-outer method strictness."
+reverify = "test_fft_dda_plan_reuse.jl32checks passed:12new typedconversion/directindexed/alias/concurrent/allocation checks plus20existing plan-reuse checks. Final serialized root process4threads/BLAS1 passed."
+limits = "Aqua nested precompile could not map runtime DLL under this host's memory pressure in two later local package attempts. Final GitHub package run remains mandatory."

@@ -1,8 +1,8 @@
-# 09a_aircraft_po.jl — Aircraft RCS: PO vs MoM at multiple mesh refinements
+# 09a_aircraft_po.jl — Aircraft RCS: PO vs MLFMA on a refined mesh
 #
 # Demonstrates:
-#   Aircraft at 0.3 GHz (14λ wingspan) — PO, direct, iterative solvers
-#   at three mesh refinement levels, with 1° RCS pattern plots
+#   Aircraft at 0.3 GHz (14λ wingspan) — PO and MLFMA/GMRES
+#   on a 1λ-edge mesh, with 1° RCS pattern plots
 #
 # Requires: examples/demo_aircraft.obj, or DMOM_AIRCRAFT_OBJ set to another OBJ.
 #
@@ -56,6 +56,8 @@ function make_cut_grid(Ntheta::Int, phi_values::Vector{Float64})
     end
     return SphGrid(rhat, theta, phi, w)
 end
+
+gmres_maxiter_for(N_m) = N_m <= 10_000 ? 1000 : 2000
 
 # ════════════════════════════════════════════════════
 # Aircraft at 0.3 GHz — direct vs iterative

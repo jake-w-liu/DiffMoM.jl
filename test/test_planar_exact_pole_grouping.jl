@@ -1,5 +1,6 @@
 module ExactPoleGroupingTests
 using DiffMoM,LinearAlgebra,Test
+include(joinpath(@__DIR__, "helpers", "workflow_spice_y.jl"))
 @testset "Exact pole grouping preserves repeated and adjacent modes" begin
     for pairs in 1:precision(Float64)
         for rates in (fill(-1.0,pairs),[-(k==1 ? 1.0 : nextfloat(1.0)) for k in 1:pairs])
@@ -13,9 +14,8 @@ using DiffMoM,LinearAlgebra,Test
             @test size(DiffMoM._vf_basis(ComplexF64[0,im],poles))==(2,length(poles)+2)
         end
     end
-    # Use the original suite's independent SPICE stamping helper. Its
-    # original module is included before this regression in the test graph.
-    stamp=getfield(parentmodule(@__MODULE__),:_workflow_spice_y)
+    # Use the independent SPICE stamping oracle without test-order dependence.
+    stamp=_workflow_spice_y
     for rates in ((-1.0,-nextfloat(1.0)),(-1.0,-1.0),(-1.0,-2.0))
         raw=ComplexF64[complex(r,i) for r in rates for i in (1.0,-1.0)]
         poles=DiffMoM._vf_sort(raw)

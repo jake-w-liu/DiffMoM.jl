@@ -1,0 +1,46 @@
+schema_version = 1
+audit_date = "2026-10-15"
+kind = "Fresh reset audit; evidence from this run"
+status = "Fresh source review, confirmed fixes and local CRC complete; delivery requires passing regular and full validation on the pushed revision"
+production_source_files = 138
+active_validation_companions = 97
+example_scripts = 37
+historical_validation_sources_excluded = 30
+full_test_files = 294
+focused_only_proxy_files = 3
+absolute_bug_freedom_claim = false
+absolute_optimization_claim = false
+remote_status = "https://github.com/jake-w-liu/DiffMoM.jl/actions"
+
+[coverage]
+production = "All138 current src Julia bodies reviewed across geometry/basis/assembly/solver/optimization/error estimation/fast/postprocessing/mom2d/mom3d/planar/loader. Every path is explicitly recorded in the area ledgers."
+companions = "All97 active validation Julia/Python/MATLAB bodies and all37 example bodies reviewed. Actual runtime and source-only coverage are distinguished by area."
+historical = "26 canonical/allocation source snapshot copies and4 archived producer scripts are retained historical evidence. The4 producer bodies were additionally read and their hashes verified against captured provenance. They are excluded from active implementation count."
+tests = "294 active test files full-covered exactly once;3 small focused-only proxies have broader full counterparts documented in README and IO ledger. Full validation uses38 groups across6 GitHub shards; default suite remains focused."
+configuration = "Loader, Project/compat, test dispatch/worker/shards, GitHub CI and docs build configuration reviewed. New fast Python runner-contract job runs concurrently."
+
+[dimensions]
+science = "Independent original equations, PEC/Mie/Floquet/Galerkin/network references, finite differences, rotation/translation/similarity, energy and phase/units checks; see exact area evidence."
+implementation = "Public input, shape, alias/state ownership, error/cleanup and configuration paths traced; each confirmed finding reproduced before a local fix."
+resources = "Preflight byte/operation limits, retained ownership, temporary files and locks reviewed; warmed allocations and workload-specific RSS measured separately."
+performance = "Representative warmed multi-size CPU benchmarks plus same-process before/after profiles. Correctness costs and exceptional paths are disclosed; no universal optimality inference."
+
+[limits]
+external = "No fresh full Bempp/Meep/MATLAB/POFacets scientific campaign or optional aircraft OBJ study. Analytical/current solver checks and retained native references supply bounded evidence. Small SonnetLite18.53 boundary probes were actually executed; the whole native corpus was not rerun."
+large_studies = "Large paper/population/optimization/convergence campaigns were source-reviewed rather than all relaunched. Actual executed cases and source-only coverage are identified in each area ledger."
+optional_artifacts = "Original full-core Test11 conditionally skips optional manuscript CSV metrics when those generated artifacts are absent; that skip is not an executed external validation."
+memory = "Zero warmed Julia allocations does not prove zero native-library allocation, leak freedom at all scales or a whole-process RSS cap."
+
+[records]
+current_hotpath = "reset_hotpath_resources.toml"
+areas = ["core_scattering.toml", "core_independent.toml", "fast_postprocessing.toml", "fast_independent.toml", "mom3d.toml", "planar_physics.toml", "planar_io_networks.toml", "physics_drivers.toml"]
+
+[final_local_route]
+method = "Independent cached FFT ownership/GC/error/concurrency path, after the final Q compatibility source fix"
+result = "18/18 passed; no new confirmed defect"
+log = "TEMP/diffmom-reset-fft-plan-lifetime.log"
+final_q_checks = 61
+root_serialized_checks_before_final_compatibility_followup = 2786
+julia_syntax_files = 841
+python_syntax_files = 26
+python_contract_checks = 27

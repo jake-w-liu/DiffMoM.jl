@@ -172,6 +172,10 @@ Full validation runs sequential groups in fresh Julia processes to release
 compiler state between groups; any failed group fails the full run.
 GitHub distributes those groups across six independent jobs. Every job must
 pass, while a local full run still executes all groups sequentially.
+The scientific-kernel, planar, and resource files named `test_focused_*` are
+small substitutes for broader full-mode checks and run only in focused mode.
+The focused optimizer and native-I/O files also run in full mode because
+they supply distinct independent objective and deembedding checks.
 
 Analytical and internal checks:
 

@@ -2,7 +2,7 @@ schema_version = 1
 owner = "core_scattering"
 audit = "Fresh reset requested2026-10-15; prior results are context only"
 base_revision = "dd2f0eb4df088a25b95e7ee2b97fe52454d1fcc6"
-status = "active; all31 still-owned source bodies freshly read; latest targeted fixes verified; global validation pending"
+status = "active; all31 owned source bodies freshly read; final Q61 local checks and49 independent checks passed; parent global validation/CI pending"
 owned_source_count = 55
 currently_owned_source_count = 31
 owned_source_lines_at_reset = 43590
@@ -10,7 +10,7 @@ additional_planar_lines_at_review = 2769
 export_occurrences = 278
 entrypoint_test_map = "TEMP/diffmom_fresh_core_dd2f0eb4/entrypoints.json"
 full_validation_pass = false
-julia_launch_state = "narrow performance prototype/CRC only; parent owns global focused run and source freeze"
+julia_launch_state = "no own Julia process; Q/source/test/docs frozen for parent Pkg.test, hotpath measurement and push"
 not_claimed = ["whole-repository numerical proof", "absolute optimization", "complete runtime/performance coverage of every branch"]
 
 [ownership]
@@ -150,7 +150,7 @@ performance = "Six warmed quadratic cases in ledger: new mean guard adds96-128 b
 [[findings]]
 id = "quadratic_mean_cancellation"
 dimensions = ["domain", "implementation", "resources", "performance"]
-status = "confirmed; local fix and targeted CRC pass; root focused/full validation and commit pending"
+status = "fixed and committed25174314; targeted CRC passed; latest whole-repository validation remains parent-owned"
 expectation = "Mean of y'Wy equals mu'Wmu+tr(WFF'), with final representable cancellation retained"
 reproduction = "mu=fill(1e150+0im,2); F=1e-150I; C=F*F'; W=[1 2^-60;2^-60 -1]"
 observed_before = "mean0,variance4"
@@ -506,6 +506,7 @@ transferred_geometry = ["src/geometry/Mesh.jl", "src/geometry/MeshIO.jl"]
 latest_source_batch = ["src/assembly/CompositeOperator.jl", "src/assembly/Excitation.jl", "src/assembly/GroundedEFIE.jl", "src/assembly/PeriodicEFIE.jl", "src/assembly/SingularIntegrals.jl", "src/basis/PeriodicGreens.jl", "src/optimization/DensityFiltering.jl", "src/optimization/MultiAngleRCS.jl"]
 new_test = "test/test_assembly_range_reductions.jl"
 registered_in = ["test/focused_suite.jl", "test/full_reference_files.jl"]
+committed_source_batch = "eight listed source files verified, parent committed/pushed a313ce2e"
 
 [[findings]]
 id = "static_potential_far_and_thin_cancellation"
@@ -570,3 +571,96 @@ protocol = "Same-process legacy cbf58e8f renamed bodies versus current; warmed m
 workloads = ["Composite21:0->0B,2.2176->2.7774us", "Composite176:0->0B,87.9272->120.7938us", "Filter18:8816->8816B,4.47->4.90us", "Filter128:122527->122479B,89.615->93.935us", "Optimizer21/2angles/initial accepted trace:24230->28774B,38.494->51.388us", "Current ordinary static potential:0B/112.05ns", "Current periodic Green:0B/28.991us"]
 peak_rss_bytes = 601993216
 followup = "Profile identified elementwise loop boxing in closure-captured optimizer gradient; typed-kernel and SIMD scan prototypes evaluated before adoption"
+
+[[evidence]]
+id = "final_assembly_range_performance_crc"
+checks = [45,7,28]
+result = "all45 new range checks,7 accepted-step optimizer checks and28 SIMD predicate edge cases pass after typed-gradient/SIMD changes"
+log = "TEMP/diffmom_fresh_assembly_final_perf_crc.log"
+peak_rss_bytes = 533024768
+performance = "Optimizer21/2angles:legacy24214B39.448us,current24182B40.376us; boxed-gradient4544B regression eliminated. Composite21/176:0Bunchanged,2.2829->2.6648us and95.4939->120.2522us; correctness-screen cost retained and reported."
+
+[companion_example_coverage]
+inventory = "rg --files examples -g '*.jl' lists37 Julia examples; root owns combined37-file census and exact delegated paths"
+complete_fresh_body_reads = ["examples/02_impedance_optimization.jl", "examples/03_beamsteering_physical_unitcell.jl", "examples/16_periodic_to_mesh_convergence.jl", "examples/18_periodic_to_multistart_study.jl", "examples/19_periodic_to_robustness_map.jl", "examples/21_grounded_rcs_demo.jl", "examples/grounded_rcs/assemble_save.jl", "examples/grounded_rcs/gradient_check_R00.jl", "examples/grounded_rcs/framework_energy_honest.jl", "examples/grounded_rcs/optimize_24.jl", "examples/grounded_rcs/optimize_finer.jl"]
+count = 11
+still_owned_unread_examples = []
+delegated_partial_reads_not_counted_complete = ["examples/07_pattern_feed.jl", "examples/13_sphere_rcs_optimization.jl", "examples/14_periodic_to_validation.jl", "examples/15_periodic_to_demo.jl", "examples/17_periodic_to_beamsteer_demo.jl", "examples/20_periodic_to_redistribution_demo.jl", "examples/grounded_rcs/framework_pixel_design.jl"]
+verification = "Current API/sign/conjugation, basis/patch mapping, accepted-iterate reporting, normalized objectives, serialized geometry checks and physical energy interpretation reviewed. Example19 reused normal-incidence Bloch basis during oblique sweeps; independent physics agent reproduced29-30percent PEC reflection error for this class and fixed15/19 with8 public source-block checks. Examples16/18 stay at fixednormal Bloch lattice."
+runtime_limits = "Default multi-start/mesh-convergence/grounded14x14/24x24/36x36 optimization sweeps were not run by this agent. Exact original480RWG Test36 and bounded current optimizer/source/periodic checks are separately identified; they do not prove those complete example studies passed."
+
+[[findings]]
+id = "farfield_and_sum_q_complete_scaled_product"
+dimensions = ["domain", "implementation", "resources", "performance"]
+status = "fixed locally; final61 pointed checks pass; independent49 passed before constructor-conversion/generic-scale compatibility additions; parent final global/CI pending"
+verification = "Public build_Q_operator G=[2.5e153,0,0],1-pointgrid,x4,alpha.1 has finiteQ11=1.2337005501361697e308 and final4.934802200544679e307 but oldmul! throws unscaled-product OverflowError. G=2^-539,x.25,alpha4 returns0 vs exactminsubnormal. Owned24000-bit alpha2^20000+1,beta-2^20000 gives0 vs1 on Q andSumQ. SumQ factorized child G2.5e154,alpha.001 throws narrowing childentry vs finite1.2337005501361698e307."
+fix = "Defer exceptional factorized products until alpha/beta join original operands; retain owned dyadic scale bits through derived precision; nested SumQ streams original wide row-products without narrowing factorized child entries. Stage complete outputs in existing buffers. Exact-IEEE-representable BigFloat scales preserve generic-child ordinary paths."
+resources = "No caller max_work_bytes parameter exists on mul!; builders' declared payload checks remain. New cold precision preflight charges min(N,NΩ) complex MPFR significands plus scalar transients; nested SumQ streams scalar rows with depth-proportional transient allowance. Hardware-wide/absolute allocation bounds are not claimed."
+files = ["src/optimization/QMatrix.jl", "test/test_farfield_q_scaled_product.jl", "docs/src/api/composite-operators.md"]
+regression_registered_in = ["test/focused_suite.jl", "test/full_reference_files.jl"]
+logs = ["TEMP/diffmom_fresh_q_scaled_product_probe.log", "TEMP/diffmom_fresh_sum_q_scaled_probe.log", "TEMP/diffmom-q-wide-scale-before.log", "TEMP/diffmom_fresh_q_scaled_graph_crc.log", "TEMP/diffmom-q-independent-final.log"]
+
+[[findings]]
+id = "q_operator_workspace_ownership_graph"
+dimensions = ["implementation", "resources", "robustness"]
+status = "fixed locally as known-Q graph invariant; final14 ownership checks passed, including nonstrided view; independent49 and parent global/CI evidence separately scoped"
+verification = "Valid supplied FarField scratch can erase aliased input, caller output's beta term or borrowed polarization; nested SumQ can overwrite parent/child/sibling coefficient storage. Before examples: unitQ suppliedwork1,inputwork yields0vs1; outputwork3,alpha2,beta4 yields6vs14."
+fix = "Every FarField/SumQ constructor validates unique known nodes' write buffers against every known retained read array and other write buffers, rejecting overlap before publishing the operator. Matrix/CSC/Diagonal/adjoint/transpose/symmetric/Hermitian storage is inspected; generic AbstractMatrix also participates through public Base.mightalias storage semantics, including nonstrided views. Shared Q nodes deduplicate. mul! rejects caller input/output overlap with known retained work buffers before mutation while preserving external x==y alias. Unknown matrix-free children retain hidden-cache ownership rules."
+limits = "Graph validation performs constructor-only metadata allocations and pairwise buffer comparisons, not coefficient-element scans. Warm raw9-fieldFar constructor adds640B/179.7ns and raw5-fieldSum adds576B/133.2ns here; matvec0B assertion passes. Unsafe external pointer rebinding is outside the immutable-reference argument."
+logs = ["TEMP/diffmom-q-workspace-alias-before.log", "TEMP/diffmom-q-coefficient-work-alias.log", "TEMP/diffmom-sumq-coefficient-work-alias.log", "TEMP/diffmom-q-independent-final.log"]
+
+[[evidence]]
+id = "q_final_pointed_and_independent_crc"
+pointed_checks = 61
+independent_checks = 49
+pointed_log = "TEMP/diffmom_q_constructor_and_generic_scale_crc.log"
+pointed_peak_rss_bytes = 410820608
+independent_log = "TEMP/diffmom-q-independent-final.log"
+independent_peak_rss_bytes = 500584448
+independent_seconds = 5.6
+checks = "Separate26000-bit primitive oracle; masked complex and both wide-workspace branches; over/underflow rescue; beta cancellation;24000-bit owned scales on nestedSum; borrowed G/pol/weights mutation; transactional errors/lock release;12 concurrent outputs eachQ/Sum with4Julia/1BLASthreads; caller/work/coeff/sibling aliases and legal shared child."
+remaining_validation = "Parent focused Pkg.test and expanded48RWG/200direction hotpath measurement running/queued; exact full original Test6 body was not rerun by this agent after Q changes."
+last_guard_addition = "Readonly nonstrided SubArray probe exposed same ownership class after41+49 pass: generic reader skipped shared dense parent although Base.mightalias=true; rawSum erasedA andreturned0vs2. Generic reader now uses public Base.mightalias storage semantics; final14 ownership checks include view and pass. LogTEMP/diffmom_fresh_q_gather_view_alias.log records before-fix proof."
+
+[[benchmarks]]
+id = "q_scaled_product_normal_prototype"
+workload = "21RWG-sized columns,12directions,complex radiation/input/alpha/beta"
+baseline_bytes = 0
+current_bytes = 0
+baseline_seconds = 3.378e-6
+current_seconds = 3.431e-6
+log = "TEMP/diffmom_fresh_q_scaled_prototype_v2.log"
+peak_rss_bytes = 388956160
+protocol = "Same-process prior production versus TEMP full-scaled prototype; warmed min10alloc/min5 timing blocks100calls;1Julia/BLASthread; host-sensitive timing. Final source includes additional constructor graph and caller alias guards, whose complete hotpath measurement is parent-owned."
+
+[[findings]]
+id = "q_constructor_default_conversion_compatibility"
+status = "new-guard regression verified against exact old a313ce2e struct definitions and fixed before push"
+verification = "Old nonparametric FarField9 converts Int32N/CF32G-pol-work/Float32weights/Boolmask/numericBoolfield; strict guard inner rejected them. Old typed SumQ{MatrixCF64,MatrixCF64}5 converts CF32child/work; strict new inner rejected. Inferred Sum5 withCF32work rejected both old/current and remains unchanged."
+fix = "Untyped inner arguments restore generated new/new{A,B} field conversion before graph validation; aliased CF32input coefficient/work becomes independent CF64field copies as before."
+checks = 12
+logs = ["TEMP/diffmom_q_constructor_conversion_before.log", "TEMP/diffmom_q_constructor_conversion_crc.log", "TEMP/diffmom_q_constructor_and_generic_scale_crc.log"]
+
+[[findings]]
+id = "generic_sum_q_number_scale_compatibility"
+status = "new-cold-dispatch regression confirmed and fixed before push"
+verification = "Diagonal/Hermitian child SumQ with BigFloat0.1/0.3 or Rational1//3/2//7 previously accepted finite products but new forced whole-factor dispatch rejected unsupported exact child entries."
+fix = "Whole-original cold recovery applies where child entry expansion exists. Otherwise certified finite child products retain the previous per-output scaling contract, now with adaptive owned-scale precision; actual exceptional unsupported child products still reject. No child entry enumeration is introduced for opaque matrix-free children."
+checks = 6
+logs = ["TEMP/diffmom_q_generic_scale_before.log", "TEMP/diffmom_q_constructor_and_generic_scale_crc.log"]
+scope = "Diagonal,Hermitian and an opaque finite-only matvec child; nonpower BigFloat alpha/beta and rational alpha/beta."
+
+[[benchmarks]]
+id = "q_constructor_owned_graph_metadata"
+workload = "Raw canonical9-fieldFar and5-fieldSum constructors,21columns/12directions; arrays/workspaces/lock reused outside measured call; output escapes through RefAny"
+farfield_baseline_bytes = 80
+farfield_current_bytes = 720
+farfield_baseline_seconds = 2.47e-8
+farfield_current_seconds = 2.044e-7
+sum_baseline_bytes = 48
+sum_current_bytes = 624
+sum_baseline_seconds = 9.8e-9
+sum_current_seconds = 1.43e-7
+peak_rss_bytes = 359944192
+log = "TEMP/diffmom_q_constructor_graph_bench.log"
+protocol = "Exact a313ce2e default struct baseline versus current; warm min10alloc/min5timing blocks1000calls;1Julia/BLASthread; does not include public builder field allocations or radiation-element scans."

@@ -2,7 +2,7 @@ schema_version = 1
 owner = "planar_physics_audit"
 audit_date = "2026-10-15"
 base_revision = "cbf58e8f"
-status = "All16 assigned driver bodies and12 example bodies plus one included helper reviewed; confirmed auxiliary fixes pass local checks; parent owns final commit/CI evidence"
+status = "All16 assigned driver bodies and18 example bodies plus one included helper reviewed; confirmed auxiliary fixes pass local checks; parent owns final commit/CI evidence"
 whole_repository_bug_free_claim = false
 global_optimization_claim = false
 
@@ -36,6 +36,13 @@ global_optimization_claim = false
 "examples/22_po_ptd_comparison.jl" = "222 lines; complete fresh body read"
 "examples/23_circular_plate_ptd.jl" = "220 lines; complete fresh body read"
 "examples/grounded_rcs/framework_pixel_design.jl" = "41 lines; complete fresh body read"
+
+"examples/13_sphere_rcs_optimization.jl" = "873 lines; complete fresh body read"
+"examples/14_periodic_to_validation.jl" = "483 lines; complete fresh body read"
+"examples/15_periodic_to_demo.jl" = "774 lines; complete fresh body read"
+"examples/17_periodic_to_beamsteer_demo.jl" = "674 lines; complete fresh body read"
+"examples/19_periodic_to_robustness_map.jl" = "488 lines; complete fresh body read"
+"examples/20_periodic_to_redistribution_demo.jl" = "621 lines; complete fresh body read"
 
 [[review_group]]
 files = ["validation/mie/mesh_fixture.jl", "validation/mie/validate_mie_rcs.jl", "validation/mie/validate_dielectric_mie_dda.jl"]
@@ -113,4 +120,32 @@ status = "Core applied(selected/(2im))/kz and added the public case to test_asse
 [remaining]
 ci = "Parent owns final main push and GitHub focused/full validation. Local bounded evidence is not a final remote pass claim."
 optional = "No MATLAB, POFacets, aircraft corpus, full paper optimization, large PEC/DDA-Mie studies or plotting renderer executed during this closure. API/source review is distinguished from runtime evidence."
-examples_outside_scope = "Remaining periodic optimization, aircraft/MLFMA/mesh examples are assigned to parent/core; they are not counted complete here."
+examples_outside_scope = "Remaining periodic/grounded optimization and aircraft/MLFMA/mesh examples are assigned to parent/core; they are not counted complete here. Assigned13/14/15/17/19/20 bodies are fully read and listed above."
+
+
+[[review_group]]
+files = ["examples/13_sphere_rcs_optimization.jl", "examples/14_periodic_to_validation.jl", "examples/15_periodic_to_demo.jl", "examples/17_periodic_to_beamsteer_demo.jl", "examples/19_periodic_to_robustness_map.jl", "examples/20_periodic_to_redistribution_demo.jl"]
+domain = "Read complete PEC/impedance sphere optimization, Floquet power/reflection validation, periodic multi-angle optimization, beam steering, frequency-angle robustness and redistribution bodies. Checked incident transversality, physical vector energy, material impedance convention, nominal versus case-specific Bloch basis, density/filter map, finite-difference and final binary-design comparisons. Confirmed stale incidence basis in15/19 and cell-average position error in20."
+implementation = "Current public mesh, periodic RWG, Ewald assembly, density penalty, radiation/Q, optimizer, reflected mode and plotting API signatures traced. Actual changed source blocks from15/19 executed on a small TM full-PEC sheet; all six full files parsed.18 checks pass."
+resources = "Rebuilt case-specific basis/mass are per angle and replace stale use; no growing history of dense matrices or retained factorization introduced.19's unused nominal mass allocation removed. Full optimization sweeps, saved-result input pipelines and renderer were not executed."
+performance = "No full-example runtime claim. Correct basis rebuild adds necessary work per case; new small case oracle and source checks ran10.7s including compilation, peak538615808B.20 coordinate change allocates the same two vectors."
+
+[[finding]]
+candidate = "Periodic incidence sweeps retain normal-incidence Bloch basis and mass"
+verification = "Examples15/19 constructed the basis at normal incidence, then changed lattice angle without rebuilding boundary coefficients or penalties. Public4x4 full-PEC TM sheet at30deg: stale reflected-vector error0.30220 versus correct-basis0.007782; both physical residuals around1e-15, so algebraic residual alone hid the wrong trial space. TEMP/diffmom-example15-oblique-basis-tm-before.log."
+fix = "Rebuild periodic RWG and triangle mass for each changed lattice, and use them consistently for matrix, RHS, material penalty, radiation and reflection in15/19. Remove19's unused nominal mass."
+reverify = "Actual changed source blocks execute independently on4x4 PEC sheet:8 checks cover nontrivial Bloch coefficients, changed material mass/penalty, analytic reflected-vector error below0.01 and physical residual below1e-12. TEMP/diffmom-example-bloch-final-crc.log."
+
+[[finding]]
+candidate = "Example20 plots cell-average density at the box edges"
+verification = "Nx/Ny cell-average arrays used range(-d/2,d/2,length=N), placing centers at physical cell boundaries and expanding implied heatmap edges by half a plotted spacing."
+fix = "Place heatmap coordinates at actual cell centers, half a physical cell inside each edge."
+reverify = "Four independent center-plus-half-cell envelope assertions pass for non-square14x18 grid; all six new example bodies parse.10 additional checks in the same source-block CRC. Renderer not executed."
+
+[[additional_evidence]]
+id = "periodic_example_followup"
+log = "TEMP/diffmom-example-bloch-final-crc.log"
+checks = 18
+elapsed_seconds = 10.7
+peak_rss_bytes = 538615808
+revision = "Follow-up working tree after a313ce2e; parent pending commit/push and remote CI"

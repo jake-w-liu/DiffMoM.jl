@@ -45,6 +45,9 @@ end
 Matrix-free representation of the Hermitian far-field objective matrix
 `Q = G' W G`. It stores the radiation-vector matrix and applies `Q*x`
 without forming the dense `N x N` matrix.
+
+The reusable workspaces belong to the operator and must not overlap each
+other or the input/output vectors. External input and output may alias.
 """
 struct FarFieldQMatrix <: AbstractMatrix{ComplexF64}
     G_mat::Matrix{ComplexF64}
@@ -56,6 +59,15 @@ struct FarFieldQMatrix <: AbstractMatrix{ComplexF64}
     error_bounds::Vector{ComplexF64}
     work_lock::ReentrantLock
     extreme_operator_factor::Bool
+    function FarFieldQMatrix(G_mat,weights,pol,mask,N,work,error_bounds,
+            work_lock,extreme_operator_factor)
+        # Preserve the default constructor's field conversions before checking
+        # ownership: conversion may create disjoint copies of borrowed inputs.
+        operator = new(G_mat,weights,pol,mask,N,work,error_bounds,
+                       work_lock,extreme_operator_factor)
+        _q_validate_owned_graph(operator)
+        return operator
+    end
 end
 
 FarFieldQMatrix(G_mat::Matrix{ComplexF64},
@@ -175,8 +187,16 @@ end
 @noinline function _farfield_q_product_bigfloat!(
         result::Vector{ComplexF64},
         Q::FarFieldQMatrix,
-        input::AbstractVector{ComplexF64})
-    return setprecision(BigFloat, _FARFIELD_Q_FALLBACK_PRECISION) do
+        input::AbstractVector{ComplexF64},
+        alpha_scale::Number=one(ComplexF64),
+        beta_scale::Number=zero(ComplexF64),
+        previous::Union{Nothing,AbstractVector{ComplexF64}}=nothing)
+    bits = previous === nothing ? _FARFIELD_Q_FALLBACK_PRECISION :
+           _farfield_q_scaled_product_precision(
+               Q, input, alpha_scale, beta_scale, previous)
+    return setprecision(BigFloat, bits) do
+        alpha_big = Complex{BigFloat}(alpha_scale)
+        beta_big = Complex{BigFloat}(beta_scale)
         quadrature_count = length(Q.weights)
         if Q.N <= quadrature_count
             totals = fill(zero(Complex{BigFloat}), Q.N)
@@ -196,7 +216,13 @@ end
                 end
             end
             @inbounds for m in 1:Q.N
-                converted = ComplexF64(totals[m])
+                total = totals[m]
+                if previous !== nothing
+                    total = alpha_big * total
+                    iszero(beta_scale) ||
+                        (total += beta_big * Complex{BigFloat}(previous[m]))
+                end
+                converted = ComplexF64(total)
                 isfinite(converted) ||
                     throw(OverflowError(
                         "FarFieldQMatrix product is outside the " *
@@ -222,6 +248,11 @@ end
                         conj(_farfield_q_projection_bigfloat(Q, q, m)) *
                         projected_inputs[q]
                 end
+                if previous !== nothing
+                    total = alpha_big * total
+                    iszero(beta_scale) ||
+                        (total += beta_big * Complex{BigFloat}(previous[m]))
+                end
                 converted = ComplexF64(total)
                 isfinite(converted) ||
                     throw(OverflowError(
@@ -237,7 +268,8 @@ end
 function _farfield_q_product_checked!(
         result::Vector{ComplexF64},
         Q::FarFieldQMatrix,
-        input::AbstractVector{ComplexF64})
+        input::AbstractVector{ComplexF64},
+        defer_exact::Val{DEFER}=Val(false)) where {DEFER}
     fill!(result, zero(ComplexF64))
     quadrature_count = length(Q.weights)
     @inbounds for q in 1:quadrature_count
@@ -255,20 +287,20 @@ function _farfield_q_product_checked!(
                 _farfield_q_projection_checked(
                     polarization, radiation)
             projection_requires_exact &&
-                return _farfield_q_product_bigfloat!(result, Q, input)
+                return DEFER ? false : _farfield_q_product_bigfloat!(result, Q, input)
             term = projection * input[n]
             _farfield_q_product_requires_exact(
                 projection, input[n], term) &&
-                return _farfield_q_product_bigfloat!(result, Q, input)
+                return DEFER ? false : _farfield_q_product_bigfloat!(result, Q, input)
             next_projected_input = projected_input + term
             (!isfinite(next_projected_input) ||
              _scaled_sum_requires_exact(
                  projected_input, term, next_projected_input)) &&
-                return _farfield_q_product_bigfloat!(result, Q, input)
+                return DEFER ? false : _farfield_q_product_bigfloat!(result, Q, input)
             projected_input = next_projected_input
         end
         isfinite(projected_input) ||
-            return _farfield_q_product_bigfloat!(result, Q, input)
+            return DEFER ? false : _farfield_q_product_bigfloat!(result, Q, input)
 
         weight = Q.weights[q]
         for m in 1:Q.N
@@ -280,25 +312,25 @@ function _farfield_q_product_checked!(
                 _farfield_q_projection_checked(
                     polarization, radiation)
             projection_requires_exact &&
-                return _farfield_q_product_bigfloat!(result, Q, input)
+                return DEFER ? false : _farfield_q_product_bigfloat!(result, Q, input)
             weighted_projection = weight * conj(projection)
             _farfield_q_product_requires_exact(
                 weight, conj(projection), weighted_projection) &&
-                return _farfield_q_product_bigfloat!(result, Q, input)
+                return DEFER ? false : _farfield_q_product_bigfloat!(result, Q, input)
             contribution = weighted_projection * projected_input
             _farfield_q_product_requires_exact(
                 weighted_projection, projected_input, contribution) &&
-                return _farfield_q_product_bigfloat!(result, Q, input)
+                return DEFER ? false : _farfield_q_product_bigfloat!(result, Q, input)
             next_result = result[m] + contribution
             (!isfinite(next_result) ||
              _scaled_sum_requires_exact(
                  result[m], contribution, next_result)) &&
-                return _farfield_q_product_bigfloat!(result, Q, input)
+                return DEFER ? false : _farfield_q_product_bigfloat!(result, Q, input)
             result[m] = next_result
         end
     end
     all(isfinite, result) ||
-        return _farfield_q_product_bigfloat!(result, Q, input)
+        return DEFER ? false : _farfield_q_product_bigfloat!(result, Q, input)
     return result
 end
 
@@ -326,7 +358,8 @@ end
 function _farfield_q_product_certified!(
         result::Vector{ComplexF64},
         Q::FarFieldQMatrix,
-        input::AbstractVector{ComplexF64})
+        input::AbstractVector{ComplexF64},
+        defer_exact::Val{DEFER}=Val(false)) where {DEFER}
     # Accumulate componentwise absolute bounds alongside the ordinary
     # factorized product.  If the rounded output is not safely separated from
     # its forward-error envelope, recompute through the exact BigFloat-aware
@@ -334,7 +367,7 @@ function _farfield_q_product_certified!(
     # per-operation cancellation checks at every inner-loop instruction.
     if Q.extreme_operator_factor ||
        any(_farfield_q_extreme_factor, input)
-        return _farfield_q_product_checked!(result, Q, input)
+        return _farfield_q_product_checked!(result, Q, input, defer_exact)
     end
 
     fill!(result, zero(ComplexF64))
@@ -344,12 +377,12 @@ function _farfield_q_product_certified!(
         Q.mask !== nothing && !Q.mask[q] && continue
         weight = Q.weights[q]
         _farfield_q_extreme_factor(weight) &&
-            return _farfield_q_product_checked!(result, Q, input)
+            return _farfield_q_product_checked!(result, Q, input, defer_exact)
         offset = 3 * (q - 1)
         polarization = SVector{3,ComplexF64}(
             Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
         _farfield_q_vector3_has_extreme_factor(polarization) &&
-            return _farfield_q_product_checked!(result, Q, input)
+            return _farfield_q_product_checked!(result, Q, input, defer_exact)
 
         projected_input = zero(ComplexF64)
         projected_real_bound = 0.0
@@ -360,7 +393,7 @@ function _farfield_q_product_certified!(
                 Q.G_mat[offset + 2, n],
                 Q.G_mat[offset + 3, n])
             _farfield_q_vector3_has_extreme_factor(radiation) &&
-                return _farfield_q_product_checked!(result, Q, input)
+                return _farfield_q_product_checked!(result, Q, input, defer_exact)
             projection, projection_real_bound, projection_imag_bound =
                 _farfield_q_projection_with_bounds(
                     polarization, radiation)
@@ -408,11 +441,79 @@ function _farfield_q_product_certified!(
            !isfinite(bounds) ||
            _matrixfree_complex_reduction_requires_exact(
                value, real(bounds), imag(bounds), term_count)
-            return _farfield_q_product_checked!(result, Q, input)
+            return _farfield_q_product_checked!(result, Q, input, defer_exact)
         end
     end
     return result
 end
+
+# Float64/ComplexF64 scales are the ordinary BLAS path. Wider significands
+# must keep their owned bits even when the caller's BigFloat precision is low.
+function _farfield_q_scale_requires_exact(scale::Number)
+    for component in (real(scale), imag(scale))
+        component isa Base.IEEEFloat && continue
+        if component isa Integer
+            abs(widen(component)) <= 9007199254740992 && continue
+        end
+        # An owned wide value can still be exactly an ordinary IEEE scale.
+        # Equality compares the stored value; it does not round it under the
+        # caller's current BigFloat precision.
+        component isa Union{BigFloat,Integer} && isfinite(component) &&
+            Float64(component) == component && continue
+        return true
+    end
+    return false
+end
+
+function _farfield_q_scaled_product_precision(Q, input, alpha, beta, previous)
+    ranges = (_local_mass_dyadic_span((alpha,)),
+              _local_mass_dyadic_span(Q.weights),
+              _local_mass_dyadic_span(Q.pol),
+              _local_mass_dyadic_span(Q.G_mat),
+              _local_mass_dyadic_span(input),
+              _local_mass_dyadic_span((beta,)),
+              _local_mass_dyadic_span(iszero(beta) ? () : previous))
+    bits = if any(isnothing, ranges)
+        # Non-dyadic Number inputs retain a finite approximation budget.
+        15360
+    else
+        # alpha*w*conj(pol*G)*(pol*G)*x has seven primitive factors.
+        lower = min(BigInt(ranges[1][1]) + ranges[2][1] + 2ranges[3][1] +
+                    2ranges[4][1] + ranges[5][1],
+                    BigInt(ranges[6][1]) + ranges[7][1])
+        upper = max(BigInt(ranges[1][2]) + ranges[2][2] + 2ranges[3][2] +
+                    2ranges[4][2] + ranges[5][2] + 7,
+                    BigInt(ranges[6][2]) + ranges[7][2] + 2)
+        # Nine projection-component pairs, at most64 real terms per complex
+        # product, for every quadrature/input pair; beta*y adds two terms.
+        terms = 576BigInt(Q.N) * length(Q.weights) + 2
+        _local_mass_dyadic_precision(upper, lower, terms)
+    end
+    # The factorized kernel retains min(N,NΩ) complex wide values. Include
+    # their MPFR significands and a bounded allowance for live scalar terms.
+    scalar_payload = BigInt(sizeof(BigFloat)) + 8cld(BigInt(bits), 64)
+    payload = _checked_payload_sum(
+        "FarFieldQMatrix exact scaled product workspace",
+        (32 + 2BigInt(min(Q.N, length(Q.weights)))) * scalar_payload)
+    _enforce_payload_limit(payload, _default_max_dense_payload_bytes(),
+        "FarFieldQMatrix exact scaled product workspace", "available_memory_bytes")
+    return bits
+end
+
+function _q_validate_external_workspace(result, input, first, second, check_input)
+    (length(first) == length(result) && length(second) == length(result)) ||
+        throw(DimensionMismatch("Q product workspace lengths must match the output"))
+    (Base.mightalias(first, second) ||
+     Base.mightalias(result, first) || Base.mightalias(result, second) ||
+     (check_input &&
+      (Base.mightalias(input, first) || Base.mightalias(input, second)))) &&
+        throw(ArgumentError(
+            "Q product input/output must not overlap the operator's workspaces"))
+    return nothing
+end
+_q_validate_workspace_tree(::AbstractMatrix, result, input, check_input) = nothing
+_q_validate_workspace_tree(Q::FarFieldQMatrix, result, input, check_input) =
+    _q_validate_external_workspace(result,input,Q.work,Q.error_bounds,check_input)
 
 function _farfield_q_product!(
         result::Vector{ComplexF64},
@@ -428,8 +529,10 @@ end
         beta_scale::Number,
         overwrite::Bool,
         row::Int)
-    return setprecision(
-            BigFloat, _FARFIELD_Q_SCALED_OUTPUT_FALLBACK_PRECISION) do
+    bits = max(_FARFIELD_Q_SCALED_OUTPUT_FALLBACK_PRECISION,
+        _local_mass_dyadic_scaled_sum_precision(
+            (alpha_scale, beta_scale), (value, previous), 2))
+    return setprecision(BigFloat, bits) do
         total = Complex{BigFloat}(alpha_scale) *
                 Complex{BigFloat}(value)
         if !overwrite
@@ -445,27 +548,25 @@ end
     end
 end
 
-@inline function _farfield_q_scaled_output(
+@inline function _farfield_q_try_scaled_output(
         value::ComplexF64,
         previous::ComplexF64,
         alpha_scale::Number,
         beta_scale::Number,
-        overwrite::Bool,
-        row::Int)
+        overwrite::Bool)
     needs_fallback =
+        _farfield_q_scale_requires_exact(alpha_scale) ||
         _ieee_dense_extreme_factor(value, Float64) ||
         _ieee_dense_extreme_factor(alpha_scale, Float64) ||
         (!overwrite &&
-         (_ieee_dense_extreme_factor(previous, Float64) ||
+         (_farfield_q_scale_requires_exact(beta_scale) ||
+          _ieee_dense_extreme_factor(previous, Float64) ||
           _ieee_dense_extreme_factor(beta_scale, Float64)))
-    needs_fallback && return _farfield_q_scaled_output_bigfloat(
-        value, previous, alpha_scale, beta_scale, overwrite, row)
+    needs_fallback && return zero(ComplexF64), true
     alpha_term = alpha_scale * value
     if overwrite
         converted = ComplexF64(alpha_term)
-        return isfinite(converted) ? converted :
-               _farfield_q_scaled_output_bigfloat(
-                   value, previous, alpha_scale, beta_scale, true, row)
+        return converted, !isfinite(converted)
     end
     beta_term = beta_scale * previous
     combined = alpha_term + beta_term
@@ -475,10 +576,19 @@ end
     converted = ComplexF64(combined)
     if isfinite(converted) && isfinite(magnitude_sum) &&
        !_scaled_sum_requires_exact(alpha_term, beta_term, combined)
-        return converted
+        return converted, false
     end
-    return _farfield_q_scaled_output_bigfloat(
-        value, previous, alpha_scale, beta_scale, false, row)
+    return converted, true
+end
+
+@inline function _farfield_q_scaled_output(
+        value::ComplexF64, previous::ComplexF64,
+        alpha_scale::Number, beta_scale::Number,
+        overwrite::Bool, row::Int)
+    converted, requires_exact = _farfield_q_try_scaled_output(
+        value, previous, alpha_scale, beta_scale, overwrite)
+    return requires_exact ? _farfield_q_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, overwrite, row) : converted
 end
 
 const _SUM_Q_PRODUCT_FALLBACK_PRECISION = 4608
@@ -490,6 +600,67 @@ struct SumQMatrix{A<:AbstractMatrix{ComplexF64},B<:AbstractMatrix{ComplexF64}} <
     work_a::Vector{ComplexF64}
     work_b::Vector{ComplexF64}
     work_lock::ReentrantLock
+    function SumQMatrix{A,B}(first,second,work_a,work_b,work_lock) where {
+            A<:AbstractMatrix{ComplexF64},B<:AbstractMatrix{ComplexF64}}
+        operator = new{A,B}(first,second,work_a,work_b,work_lock)
+        _q_validate_owned_graph(operator)
+        return operator
+    end
+end
+SumQMatrix(first::A,second::B,work_a::Vector{ComplexF64},
+        work_b::Vector{ComplexF64},work_lock::ReentrantLock) where {
+        A<:AbstractMatrix{ComplexF64},B<:AbstractMatrix{ComplexF64}} =
+    SumQMatrix{A,B}(first,second,work_a,work_b,work_lock)
+
+# Every owned write buffer must be disjoint from all known read storage and
+# every other owned write buffer in the graph. Check this once: these types'
+# array references are immutable, while ordinary coefficient values may mutate.
+# Deduplicate shared Q nodes so SumQMatrix(child,child) remains valid.
+function _q_collect_owned_storage!(reads,writes,seen,Q::FarFieldQMatrix)
+    haskey(seen,Q) && return
+    seen[Q] = nothing
+    append!(reads,(Q.G_mat,Q.weights,Q.pol))
+    Q.mask === nothing || push!(reads,Q.mask)
+    append!(writes,(Q.work,Q.error_bounds))
+end
+function _q_collect_owned_storage!(reads,writes,seen,Q::SumQMatrix)
+    haskey(seen,Q) && return
+    seen[Q] = nothing
+    append!(writes,(Q.work_a,Q.work_b))
+    _q_collect_owned_storage!(reads,writes,seen,Q.A)
+    _q_collect_owned_storage!(reads,writes,seen,Q.B)
+end
+_q_collect_owned_storage!(reads,writes,seen,Q::StridedMatrix) = push!(reads,Q)
+function _q_collect_owned_storage!(reads,writes,seen,Q::SparseArrays.AbstractSparseMatrixCSC)
+    append!(reads,(Q.colptr,Q.rowval,nonzeros(Q)))
+end
+_q_collect_owned_storage!(reads,writes,seen,Q::Diagonal) = push!(reads,Q.diag)
+_q_collect_owned_storage!(reads,writes,seen,Q::Union{LinearAlgebra.Adjoint,
+        LinearAlgebra.Transpose,LinearAlgebra.Symmetric,LinearAlgebra.Hermitian}) =
+    _q_collect_owned_storage!(reads,writes,seen,parent(Q))
+# Base.mightalias exposes storage for other array views/wrappers without
+# enumerating entries. Unknown matrix-free children own hidden-cache contracts.
+_q_collect_owned_storage!(reads,writes,seen,Q::AbstractMatrix) = push!(reads,Q)
+function _q_validate_owned_graph(Q)
+    reads,writes = Any[],Any[]
+    _q_collect_owned_storage!(reads,writes,IdDict{Any,Nothing}(),Q)
+    for (index,work) in enumerate(writes)
+        for coefficients in reads
+            Base.mightalias(work,coefficients) && throw(ArgumentError(
+                "Q operator workspace must not overlap retained coefficient storage"))
+        end
+        for previous in 1:index-1
+            Base.mightalias(work,writes[previous]) && throw(ArgumentError(
+                "Q operator workspaces must be mutually disjoint"))
+        end
+    end
+    return nothing
+end
+function _q_validate_workspace_tree(Q::SumQMatrix, result, input, check_input)
+    _q_validate_external_workspace(result,input,Q.work_a,Q.work_b,check_input)
+    _q_validate_workspace_tree(Q.A,result,input,check_input)
+    _q_validate_workspace_tree(Q.B,result,input,check_input)
+    return nothing
 end
 
 function SumQMatrix{A,B}(matrix_a::A, matrix_b::B) where {
@@ -558,19 +729,14 @@ end
         alpha_scale::Number,
         beta_scale::Number,
         overwrite::Bool)
-    return setprecision(BigFloat, _SUM_Q_PRODUCT_FALLBACK_PRECISION) do
+    bits = _sum_q_scaled_product_precision(
+        Q, input, alpha_scale, beta_scale, previous)
+    return setprecision(BigFloat, bits) do
         alpha_big = Complex{BigFloat}(alpha_scale)
         beta_big = overwrite ? zero(Complex{BigFloat}) :
                    Complex{BigFloat}(beta_scale)
         @inbounds for row in eachindex(output)
-            product = zero(Complex{BigFloat})
-            for column in axes(Q, 2)
-                input_value = Complex{BigFloat}(input[column])
-                product +=
-                    Complex{BigFloat}(Q.A[row, column]) * input_value
-                product +=
-                    Complex{BigFloat}(Q.B[row, column]) * input_value
-            end
+            product = _q_wide_product_row(Q, row, input)
             total = alpha_big * product
             if !overwrite
                 total += beta_big * Complex{BigFloat}(previous[row])
@@ -593,8 +759,10 @@ end
         beta_scale::Number,
         overwrite::Bool,
         row::Int)
-    return setprecision(
-            BigFloat, _SUM_Q_SCALED_OUTPUT_FALLBACK_PRECISION) do
+    bits = max(_SUM_Q_SCALED_OUTPUT_FALLBACK_PRECISION,
+        _local_mass_dyadic_scaled_sum_precision(
+            (alpha_scale, beta_scale), (value, previous), 2))
+    return setprecision(BigFloat, bits) do
         total = Complex{BigFloat}(alpha_scale) *
                 Complex{BigFloat}(value)
         if !overwrite
@@ -618,10 +786,12 @@ end
         overwrite::Bool,
         row::Int)
     needs_fallback =
+        _farfield_q_scale_requires_exact(alpha_scale) ||
         _ieee_dense_extreme_factor(value, Float64) ||
         _ieee_dense_extreme_factor(alpha_scale, Float64) ||
         (!overwrite &&
-         (_ieee_dense_extreme_factor(previous, Float64) ||
+         (_farfield_q_scale_requires_exact(beta_scale) ||
+          _ieee_dense_extreme_factor(previous, Float64) ||
           _ieee_dense_extreme_factor(beta_scale, Float64)))
     needs_fallback && return _sum_q_scaled_output_bigfloat(
         value, previous, alpha_scale, beta_scale, overwrite, row)
@@ -698,6 +868,84 @@ end
     _sum_q_exact_entries_supported(Q.B)
 @inline _sum_q_exact_entries_supported(::AbstractMatrix) = false
 
+# Bounds for the original primitive terms in a row product, before child
+# operators or caller scales can narrow them. The final field counts live
+# recursive levels for the scalar-workspace preflight.
+function _q_product_dyadic_bounds(Q::Union{Matrix{ComplexF64},
+        SparseArrays.AbstractSparseMatrixCSC{ComplexF64}}, input)
+    values = Q isa SparseArrays.AbstractSparseMatrixCSC ? nonzeros(Q) : Q
+    matrix_range = _local_mass_dyadic_span(values)
+    input_range = _local_mass_dyadic_span(input)
+    (matrix_range === nothing || input_range === nothing) && return nothing
+    return (BigInt(matrix_range[1])+input_range[1],
+            BigInt(matrix_range[2])+input_range[2]+2,
+            2BigInt(length(input)), 1)
+end
+function _q_product_dyadic_bounds(Q::FarFieldQMatrix, input)
+    ranges = (_local_mass_dyadic_span(Q.weights),
+              _local_mass_dyadic_span(Q.pol),
+              _local_mass_dyadic_span(Q.G_mat),
+              _local_mass_dyadic_span(input))
+    any(isnothing, ranges) && return nothing
+    return (BigInt(ranges[1][1])+2ranges[2][1]+2ranges[3][1]+ranges[4][1],
+            BigInt(ranges[1][2])+2ranges[2][2]+2ranges[3][2]+ranges[4][2]+6,
+            288BigInt(Q.N)*length(Q.weights), 1)
+end
+function _q_product_dyadic_bounds(Q::SumQMatrix, input)
+    first = _q_product_dyadic_bounds(Q.A, input)
+    second = _q_product_dyadic_bounds(Q.B, input)
+    (first === nothing || second === nothing) && return nothing
+    return (min(first[1],second[1]), max(first[2],second[2]),
+            first[3]+second[3], max(first[4],second[4])+1)
+end
+_q_product_depth(::AbstractMatrix) = 1
+_q_product_depth(Q::SumQMatrix) = max(_q_product_depth(Q.A),_q_product_depth(Q.B))+1
+
+function _sum_q_scaled_product_precision(Q, input, alpha, beta, previous)
+    product = _q_product_dyadic_bounds(Q,input)
+    scale = _local_mass_dyadic_span((alpha,))
+    prior = _local_mass_dyadic_span(iszero(beta) ? () : previous)
+    prior_scale = _local_mass_dyadic_span((beta,))
+    bits = if any(isnothing,(product,scale,prior,prior_scale))
+        15360
+    else
+        lower = min(product[1]+scale[1], BigInt(prior[1])+prior_scale[1])
+        upper = max(product[2]+scale[2]+1, BigInt(prior[2])+prior_scale[2]+2)
+        _local_mass_dyadic_precision(upper,lower,2product[3]+2)
+    end
+    depth = product === nothing ? _q_product_depth(Q) : product[4]
+    payload = _checked_payload_sum("SumQMatrix exact scaled product workspace",
+        32BigInt(depth+1)*(sizeof(BigFloat)+8cld(BigInt(bits),64)))
+    _enforce_payload_limit(payload,_default_max_dense_payload_bytes(),
+        "SumQMatrix exact scaled product workspace","available_memory_bytes")
+    return bits
+end
+
+function _q_wide_product_row(Q::Union{Matrix{ComplexF64},
+        SparseArrays.AbstractSparseMatrixCSC{ComplexF64}}, row, input)
+    total = zero(Complex{BigFloat})
+    @inbounds for column in axes(Q,2)
+        total += Complex{BigFloat}(Q[row,column])*Complex{BigFloat}(input[column])
+    end
+    return total
+end
+function _q_wide_product_row(Q::FarFieldQMatrix, row, input)
+    total = zero(Complex{BigFloat})
+    @inbounds for q in eachindex(Q.weights)
+        Q.mask !== nothing && !Q.mask[q] && continue
+        projected = zero(Complex{BigFloat})
+        for column in axes(Q,2)
+            projected += _farfield_q_projection_bigfloat(Q,q,column)*
+                         Complex{BigFloat}(input[column])
+        end
+        total += BigFloat(Q.weights[q])*
+                 conj(_farfield_q_projection_bigfloat(Q,q,row))*projected
+    end
+    return total
+end
+_q_wide_product_row(Q::SumQMatrix, row, input) =
+    _q_wide_product_row(Q.A,row,input)+_q_wide_product_row(Q.B,row,input)
+
 @inline function _sum_q_combination_requires_fallback(
         first::ComplexF64, second::ComplexF64, combined::ComplexF64)
     _scaled_sum_requires_exact(first, second, combined) && return true
@@ -735,6 +983,7 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
                             beta_scale::Number)
     length(result) == size(Q, 1) || throw(DimensionMismatch("result length $(length(result)) != $(size(Q, 1))"))
     length(x) == size(Q, 2) || throw(DimensionMismatch("input length $(length(x)) != $(size(Q, 2))"))
+    _q_validate_workspace_tree(Q,result,x,!iszero(alpha_scale))
     if iszero(alpha_scale)
         if iszero(beta_scale)
             fill!(result, zero(ComplexF64))
@@ -757,7 +1006,12 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
     overwrite = iszero(beta_scale)
     lock(Q.work_lock)
     try
-        fallback_required = _sum_q_requires_exact_product(Q, xread) ||
+        exact_entries_supported = _sum_q_exact_entries_supported(Q.A) &&
+                                  _sum_q_exact_entries_supported(Q.B)
+        wide_scales = _farfield_q_scale_requires_exact(alpha_scale) ||
+                      (!overwrite && _farfield_q_scale_requires_exact(beta_scale))
+        fallback_required = (exact_entries_supported && wide_scales) ||
+                            _sum_q_requires_exact_product(Q, xread) ||
                             !_sum_q_child_products!(Q, xread)
         if !fallback_required
             @inbounds for row in eachindex(Q.work_a)
@@ -778,21 +1032,32 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
             end
         end
 
+        if !fallback_required
+            @inbounds for row in eachindex(Q.work_a)
+                converted, needs_exact = _farfield_q_try_scaled_output(
+                    Q.work_a[row],result[row],alpha_scale,beta_scale,overwrite)
+                if needs_exact
+                    if exact_entries_supported
+                        fallback_required = true
+                        break
+                    end
+                    # Opaque children expose their completed finite products.
+                    # Preserve that existing contract for wider Number scales
+                    # without requiring an unavailable child entry expansion.
+                    converted = _sum_q_scaled_output(
+                        Q.work_a[row],result[row],alpha_scale,beta_scale,overwrite,row)
+                end
+                Q.work_b[row] = converted
+            end
+        end
         if fallback_required
-            (_sum_q_exact_entries_supported(Q.A) &&
-             _sum_q_exact_entries_supported(Q.B)) ||
+            exact_entries_supported ||
                 throw(OverflowError(
                     "SumQMatrix cannot certify an exceptional product for " *
                     "a generic matrix-free child without exact-entry support"))
             _sum_q_scaled_product_bigfloat!(
                 Q.work_b, Q, xread, result,
                 alpha_scale, beta_scale, overwrite)
-        else
-            @inbounds for row in eachindex(Q.work_a)
-                Q.work_b[row] = _sum_q_scaled_output(
-                    Q.work_a[row], result[row],
-                    alpha_scale, beta_scale, overwrite, row)
-            end
         end
         copyto!(result, Q.work_b)
     finally
@@ -945,14 +1210,22 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
                             beta_scale::Number)
     length(result) == Q.N || throw(DimensionMismatch("result length $(length(result)) != $(Q.N)"))
     length(I_coeffs) == Q.N || throw(DimensionMismatch("input length $(length(I_coeffs)) != $(Q.N)"))
+    _q_validate_external_workspace(
+        result,I_coeffs,Q.work,Q.error_bounds,!iszero(alpha_scale))
     if iszero(alpha_scale)
         if iszero(beta_scale)
             fill!(result, zero(ComplexF64))
         elseif beta_scale != one(beta_scale)
-            @inbounds for m in eachindex(result)
-                result[m] = _farfield_q_scaled_output(
-                    zero(ComplexF64), result[m], alpha_scale,
-                    beta_scale, false, m)
+            lock(Q.work_lock)
+            try
+                @inbounds for m in eachindex(result)
+                    Q.work[m] = _farfield_q_scaled_output(
+                        zero(ComplexF64), result[m], alpha_scale,
+                        beta_scale, false, m)
+                end
+                copyto!(result, Q.work)
+            finally
+                unlock(Q.work_lock)
             end
         end
         return result
@@ -961,11 +1234,31 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
     overwrite = iszero(beta_scale)
     lock(Q.work_lock)
     try
-        _farfield_q_product!(Q.work, Q, input_read)
-        @inbounds for m in eachindex(result)
-            result[m] = _farfield_q_scaled_output(
-                Q.work[m], result[m], alpha_scale, beta_scale,
-                overwrite, m)
+        requires_exact = _farfield_q_scale_requires_exact(alpha_scale) ||
+            (!overwrite && _farfield_q_scale_requires_exact(beta_scale))
+        # Defer exceptional products until alpha and beta can join the same
+        # wide reduction; an unscaled Q*x may overflow or round to zero.
+        requires_exact || (requires_exact =
+            _farfield_q_product_certified!(Q.work, Q, input_read, Val(true)) === false)
+        if !requires_exact
+            @inbounds for m in eachindex(result)
+                converted, needs_exact = _farfield_q_try_scaled_output(
+                    Q.work[m], result[m], alpha_scale, beta_scale, overwrite)
+                if needs_exact
+                    requires_exact = true
+                    break
+                end
+                Q.error_bounds[m] = converted
+            end
+        end
+        if requires_exact
+            _farfield_q_product_bigfloat!(
+                Q.work, Q, input_read, alpha_scale, beta_scale, result)
+            copyto!(result, Q.work)
+        else
+            # Reuse the no-longer-needed certificate buffer so failure never
+            # leaves a partially scaled user output, including aliased input.
+            copyto!(result, Q.error_bounds)
         end
     finally
         unlock(Q.work_lock)

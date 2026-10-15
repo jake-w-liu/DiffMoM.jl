@@ -97,9 +97,11 @@ y = Z(theta) * x = Z_base * x - Sigma_p coeff_p * (M_p * x)
 ```
 
 The impedance contribution costs
-`O(sum(nnz(Mp[p]) for p in eachindex(Mp)))` per product. Its share of runtime
-depends on patch storage and the selected base operator; measure both parts on
-the target problem.
+`O(N*P + sum(nnz(Mp[p]) for p in eachindex(Mp)))` per product for sparse patch
+matrices, including the full-vector workspace and accumulation for each patch.
+Numerical range checks also scan directly stored base and patch values because
+the operator borrows mutable matrices. Runtime therefore depends on matrix
+storage and the selected base operator; measure both parts on the target problem.
 
 For resistive loading (`reactive=false`): `coeff_p = theta_p`
 For reactive loading (`reactive=true`): `coeff_p = i * theta_p`
@@ -195,12 +197,13 @@ end
 | MLFMA base | O(N log N) | O(N log N) |
 | ACA base | O(N log^2 N) | O(N log^2 N) |
 | Dense base | O(N^2) | O(N^2) |
-| Impedance perturbation | O(sum_p nnz(M_p)) | O(sum_p nnz(M_p)) |
+| Impedance perturbation | O(N*P + sum_p nnz(M_p)) | O(N + sum_p nnz(M_p)) |
 
-For localized, nonoverlapping patches whose total stored entries grow linearly
-with `N`, the impedance term is O(N). Overlap or denser patch matrices change
-that cost, so use the stored-entry sum rather than `P` alone when estimating a
-run.
+With a fixed number of localized patches and total stored entries proportional
+to `N`, the impedance contribution is O(N). When the number of patches also
+grows, include the `N*P` full-vector work. Overlap and denser patch matrices
+increase the stored-entry sum. The range screen reads current stored values
+on each product; borrowed matrix mutations therefore remain visible.
 
 ---
 

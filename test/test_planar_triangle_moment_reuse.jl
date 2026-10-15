@@ -1,6 +1,7 @@
 module PlanarTriangleMomentReuseTests
 using DiffMoM,Test,LinearAlgebra,Random,SparseArrays
 const G=DiffMoM
+include(joinpath(@__DIR__, "helpers", "conformal_pulse_moments.jl"))
 
 # The previous independent, per-vertex divided-difference formula. Keep its
 # evaluation here so changing the production shared table cannot change both
@@ -99,7 +100,7 @@ end
             (kx,ky) in ((0.,0.),(.3,.5),(-1.2,1.2),(1.2,-1.2),(1.,0.),(.9,.90000001))
         v=v0[:,collect(permutation)].*scale
         value=G._planar_pulse_and_first_moments(v,kx/scale,ky/scale)
-        expected=Main.ConformalPulseAreaTests.series_moments(v,kx/scale,ky/scale)
+        expected=series_moments(v,kx/scale,ky/scale)
         @test norm(collect(value).-collect(expected))<=5e-13*norm(collect(expected))
     end
 end

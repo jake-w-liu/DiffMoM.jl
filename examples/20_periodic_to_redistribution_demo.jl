@@ -574,8 +574,10 @@ end
 G_opt = density_to_grid(rho_bar_final, centroids, Nx, Ny, dx_cell, dy_cell)
 G_checker = density_to_grid(rho_checker, centroids, Nx, Ny, dx_cell, dy_cell)
 
-x_over_lambda = collect(range(-dx_cell/(2lambda), dx_cell/(2lambda), length=Nx))
-y_over_lambda = collect(range(-dy_cell/(2lambda), dy_cell/(2lambda), length=Ny))
+x_over_lambda = collect(range((-dx_cell/2 + dx_cell/(2Nx))/lambda,
+    (dx_cell/2 - dx_cell/(2Nx))/lambda, length=Nx))
+y_over_lambda = collect(range((-dy_cell/2 + dy_cell/(2Ny))/lambda,
+    (dy_cell/2 - dy_cell/(2Ny))/lambda, length=Ny))
 
 fig_opt = plot_heatmap(x_over_lambda, y_over_lambda, G_opt;
     xlabel=raw"$x/\lambda$", ylabel=raw"$y/\lambda$", title="",

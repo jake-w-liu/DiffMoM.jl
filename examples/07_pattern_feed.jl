@@ -29,7 +29,7 @@ k    = 2π / λ0
 
 # z-directed electric dipole at the origin
 dipole_pos = Vec3(0.0, 0.0, 0.3)       # 3λ above the plate
-moment     = CVec3(0.0 + 0im, 0.0 + 0im, 1e-3 + 0im)  # z-directed, 1 mA·m
+moment     = CVec3(0.0 + 0im, 0.0 + 0im, 1e-3 + 0im)  # electric moment, C·m
 dipole = make_dipole(dipole_pos, moment, Vec3(0.0, 0.0, 1.0), :electric, freq)
 
 println("\nDipole: z-directed electric, position = (0, 0, $(dipole_pos[3])) m")
@@ -48,6 +48,9 @@ pat = make_analytic_dipole_pattern_feed(dipole, θ_grid, φ_grid)
 
 # ── 3. Validate pattern-feed field vs analytical ────
 println("\n── Pattern feed vs analytical dipole field ──")
+# The pattern feed retains the radiating 1/r term. Near the z-directed
+# dipole's axial null, omitted 1/r² and 1/r³ terms can dominate even at 3λ.
+println("  Far-field pattern approximation; near-axis errors include omitted near fields.")
 # Evaluate at a few test points on the plate
 test_pts = [
     Vec3(0.02, 0.0, 0.0),
@@ -101,16 +104,18 @@ G_mat = radiation_vectors(mesh, rwg, grid, k)
 NΩ    = length(grid.w)
 E_ff  = compute_farfield(G_mat, Vector{ComplexF64}(I_pat), NΩ)
 
-σ = bistatic_rcs(E_ff; E0=norm(moment))
-σ_dB = 10 .* log10.(max.(σ, 1e-30))
+# A localized dipole has no uniform incident-field amplitude for RCS
+# normalization. Report the scattered far-field coefficient r*E_s instead.
+farfield_amplitude = [norm(field) for field in eachcol(E_ff)]
 
 println("\n── Far-field ──")
-println("  σ_max = $(round(maximum(σ_dB), digits=2)) dBsm")
-println("  σ_min = $(round(minimum(σ_dB), digits=2)) dBsm")
+println("  Max |r E_s| = $(round(maximum(farfield_amplitude), sigdigits=4)) V")
+println("  Min |r E_s| = $(round(minimum(farfield_amplitude), sigdigits=4)) V")
 
 # Energy check
 P_in  = input_power(Vector{ComplexF64}(I_pat), Vector{ComplexF64}(v_pat))
 P_rad = radiated_power(E_ff, grid)
+println("  P_rad = $(round(P_rad, sigdigits=4)) W")
 println("  P_rad/P_in = $(round(P_rad/P_in, digits=4))")
 
 # ── 6. Also demonstrate plane-wave for comparison ──
