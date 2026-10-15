@@ -1,4 +1,5 @@
 # Core scientific validation; run through full_validation.jl.
+include(joinpath(@__DIR__, "helpers", "filter_allocations.jl"))
 complex_vector_input = ComplexF64[1 + 2im, 3 - 4im]
 @assert DiffMoM._complex_vector_input(complex_vector_input) === complex_vector_input
 DiffMoM._complex_vector_input(complex_vector_input)  # warm compilation
@@ -13,11 +14,6 @@ end
 function _bit_vector_output_allocation(n::Int)
     BitVector(undef, n)
     return @allocated BitVector(undef, n)
-end
-
-function _float_vector_output_allocation(n::Int)
-    zeros(Float64, n)
-    return @allocated zeros(Float64, n)
 end
 
 function _complex_matrix_output_allocation(m::Int, n::Int)
@@ -237,16 +233,6 @@ end
 function _bilinear_allocation(left, A, right)
     DiffMoM._dot_left_matrix_right(left, A, right)
     return @allocated DiffMoM._dot_left_matrix_right(left, A, right)
-end
-
-function _filter_allocation(W, w_sum, rho)
-    apply_filter(W, w_sum, rho)
-    return @allocated apply_filter(W, w_sum, rho)
-end
-
-function _filter_transpose_allocation(W, w_sum, gradient)
-    apply_filter_transpose(W, w_sum, gradient)
-    return @allocated apply_filter_transpose(W, w_sum, gradient)
 end
 
 function _assert_single_complex_output_allocation(A, x)

@@ -1,14 +1,6 @@
 using DiffMoM, Test, LinearAlgebra
 
-function _native_raster_budget_error(f)
-    try
-        f()
-    catch err
-        err isa ArgumentError || rethrow()
-        return sprint(showerror,err)
-    end
-    error("expected native raster resource rejection")
-end
+include(joinpath(@__DIR__, "helpers", "native_raster_budget_error.jl"))
 
 function _native_raster_numerical_budget(model)
     budget=1

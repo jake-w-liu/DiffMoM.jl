@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import hashlib
 from pathlib import Path
+import tempfile
 from typing import Dict, Tuple
 
 import numpy as np
@@ -114,19 +116,19 @@ def run_bempp_impedance(
             "mesh_step_m": mesh_h,
         }
     elif mesh_mode == "structured":
-        mesh_file = (
-            Path(__file__).resolve().parents[2]
-            / "data"
-            / f"structured_plate_nx{nx}_ny{ny}.msh"
-        )
-        mesh_file.parent.mkdir(parents=True, exist_ok=True)
-        write_structured_plate_msh(mesh_file, side=side, nx=nx, ny=ny)
-        grid = bempp.import_grid(str(mesh_file))
+        # Same-sized campaigns can use different frequencies/apertures. A
+        # shared file in the source checkout can be overwritten by another
+        # solve before import, and ignores the CLI's chosen output root.
+        with tempfile.TemporaryDirectory(prefix="diffmom-bempp-") as scratch:
+            mesh_file = Path(scratch) / "structured_plate.msh"
+            write_structured_plate_msh(mesh_file, side=side, nx=nx, ny=ny)
+            mesh_sha256 = hashlib.sha256(mesh_file.read_bytes()).hexdigest()
+            grid = bempp.import_grid(str(mesh_file))
         mesh_descriptor = {
             "mesh_mode": mesh_mode,
             "structured_nx": nx,
             "structured_ny": ny,
-            "mesh_file": str(mesh_file),
+            "mesh_sha256": mesh_sha256,
             "mesh_step_lambda": side / (nx * lambda0),
             "mesh_step_m": side / nx,
         }

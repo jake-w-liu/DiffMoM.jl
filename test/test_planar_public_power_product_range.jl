@@ -25,7 +25,7 @@ function exercise(root,output)
     )
     rows=[]
     result=@testset "Public power products preserve finite accepted power" begin
-        for (v,i) in fixtures
+        for (fixture,(v,i)) in enumerate(fixtures)
             saved_v,saved_i=copy(v),copy(i)
             expected=reference_power(v,i)
             wave_reference=setprecision(BigFloat,2precision(Float64)) do
@@ -41,10 +41,16 @@ function exercise(root,output)
             @test isapprox(value.b,wave_reference.b;rtol=3e-14,atol=0)
             @test v==saved_v && i==saved_i
             @test planar_power_waves(view(v,:),view(i,:);z0=z).accepted_power==expected
-            retained=DiffMoM._checked_array_payload_bytes(ComplexF64,6,length(v))
-            if !isfinite(real(dot(v,i)))
+            # The public bound charges six ComplexF64 vectors. Reactive
+            # fixtures 1 and 5 have no nonzero real-coordinate products,
+            # so their exact zero power needs no MPFR recovery even when
+            # the unused imaginary dot overflows and BLAS returns NaN.
+            retained=6sizeof(ComplexF64)*length(v)
+            @test_throws ArgumentError planar_power_waves(v,i;z0=z,max_bytes=retained-1)
+            if fixture in (2,3,4)
                 bits=DiffMoM._planar_power_product_precision(length(v))
-                required=retained+4DiffMoM._planar_wide_scalar_payload(bits)
+                # Recovery owns four simultaneously live MPFR scalars.
+                required=retained+4Base.summarysize(BigFloat(0.;precision=bits))
                 @test_throws ArgumentError planar_power_waves(v,i;z0=z,max_bytes=required-1)
                 @test planar_power_waves(v,i;z0=z,max_bytes=required).accepted_power==expected
             else

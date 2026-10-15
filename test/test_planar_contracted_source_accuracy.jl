@@ -105,12 +105,20 @@ expected_field=planar_farfield(prob,coefficients,1e6;theta=[.31],phi=[.49],radia
 end
 
 @testset "contracted source: inherited small source amplitude controls" begin
+    # rtol bounds the physical equation residual, rather than forward Y
+    # error. Resolve both sides more accurately before checking response
+    # scaling at the inherited 2e-10 bound on this ill-conditioned fixture.
+    scaling_rtol=target^2
+    scaling_reference=solve_planar_contracted(prob,1e6,C;mx=40,my=40,
+        rtol=scaling_rtol,surface_zs=model.sheet_zs,
+        via_sigma=model.via_sigma,z0=model.z0)
     for amplitude in (1.,1e-16,1e-18,-1e-16)
         scaled=solve_planar_contracted(prob,1e6,amplitude.*C;mx=40,my=40,
-            surface_zs=model.sheet_zs,via_sigma=model.via_sigma,z0=model.z0)
-        @test maximum(scaled.raw.relative_residuals)<=target
+            rtol=scaling_rtol,surface_zs=model.sheet_zs,
+            via_sigma=model.via_sigma,z0=model.z0)
+        @test maximum(scaled.raw.relative_residuals)<=scaling_rtol
         # The original API's nearby source-amplitude tests use this bound.
-        @test scaled.y≈amplitude^2 .* result.y rtol=2e-10
+        @test scaled.y≈amplitude^2 .* scaling_reference.y rtol=2e-10
     end
 end
 

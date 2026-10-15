@@ -155,11 +155,11 @@ def _validate_json_numbers(value: Any, location: str = "$") -> None:
             _validate_json_numbers(item, f"{location}[{index}]")
 
 
-def read_json_object(path: Path) -> Dict[str, Any]:
+def read_json_object(path: Path, *, content: str | None = None) -> Dict[str, Any]:
     """Read a standard JSON object and reject every non-finite number."""
     try:
         data = json.loads(
-            path.read_text(encoding="utf-8"),
+            path.read_text(encoding="utf-8") if content is None else content,
             parse_constant=_reject_nonstandard_json_constant,
             object_pairs_hook=_reject_duplicate_json_members,
         )
@@ -388,6 +388,8 @@ class ImpedanceValidationConfig:
             "--phi-inc-deg", str(self.phi_inc_deg),
             "--n-theta", str(self.n_theta),
             "--n-phi", str(self.n_phi),
+            "--nx", str(self.nx),
+            "--ny", str(self.ny),
             "--output-prefix", prefix,
         ]
 

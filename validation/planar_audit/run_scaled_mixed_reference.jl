@@ -1,6 +1,15 @@
 using DiffMoM,SHA,TOML
 include(joinpath(@__DIR__,"../sonnet_stripline/sonnet_reference.jl"))
 using .SonnetReference
+function _scaled_mixed_reference_sources(fixture,row)
+    name=row["case"]
+    parameter=joinpath(fixture,"native",name*"_parameter.son")
+    literal=joinpath(fixture,"native",name*"_literal.son")
+    isfile(parameter) || throw(ArgumentError("missing native parameter fixture: $name"))
+    isfile(literal) || get(row,"status",nothing)=="REJECTED" ||
+        throw(ArgumentError("missing native literal fixture for expected pair: $name"))
+    return isfile(literal) ? (("parameter",parameter),("literal",literal)) : (("parameter",parameter),)
+end
 function main()
     repo=normpath(joinpath(@__DIR__,"../.."))
     fixture=joinpath(repo,"test/fixtures/native_geovar_scaled_mixed_reference")
@@ -15,9 +24,7 @@ function main()
     try
         for row in TOML.parsefile(joinpath(fixture,"comparison.toml"))["cases"]
             name=row["case"];matrices=Matrix{ComplexF64}[]
-            for suffix in ("parameter","literal")
-                source=joinpath(fixture,"native",name*"_"*suffix*".son")
-                isfile(source) || continue
+            for (suffix,source) in _scaled_mixed_reference_sources(fixture,row)
                 native=reference_run(find_em(),source;output_dir=joinpath(output,name,suffix),deembedded=false)
                 actual=only(checked_native_touchstone(native,joinpath(native.output_dir,"native_raw.s2p");deembedded=false).s)
                 archived=only(planar_read_touchstone(joinpath(fixture,"native",name*"_"*suffix,"native_raw.s2p")).s)
@@ -36,4 +43,4 @@ function main()
     end
     report["source_unchanged"] && all(r->r["status"]!="FAIL",report["cases"]) || error("scaled mixed-reference replay failed")
 end
-main()
+abspath(PROGRAM_FILE)==(@__FILE__) && main()

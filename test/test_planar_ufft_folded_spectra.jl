@@ -1,4 +1,6 @@
 using DiffMoM,Test,LinearAlgebra
+include(joinpath(@__DIR__, "helpers", "dense_fft_workspace.jl"))
+
 
 function _folded_result_matvec_bytes(result)
     x=view(result.currents,:,1);out=zeros(ComplexF64,length(x))

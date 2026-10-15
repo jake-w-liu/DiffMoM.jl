@@ -149,7 +149,7 @@ def add_runtime_arguments(
 
 
 def validate_runtime_geometry(parser: argparse.ArgumentParser, args: Any) -> None:
-    """Reject source or monitor planes that enter the PML layers."""
+    """Keep source/monitors in air, on the intended sides of the metal slab."""
     lower_z = -0.5 * args.sz_lambda + args.pml_lambda
     upper_z = 0.5 * args.sz_lambda - args.pml_lambda
     source_z = upper_z - args.source_offset_lambda
@@ -168,6 +168,15 @@ def validate_runtime_geometry(parser: argparse.ArgumentParser, args: Any) -> Non
         )
     if reflection_z <= transmission_z:
         parser.error("the reflection plane must be above the transmission plane")
+    # The actual geometry is at least one grid cell thick. A plane can be
+    # inside the non-PML region yet lie in metal or on the wrong side of it.
+    half_thickness = 0.5 * max(args.metal_thickness_lambda, 1.0 / args.resolution)
+    if not transmission_z < -half_thickness < half_thickness < reflection_z:
+        parser.error(
+            "the reflection plane and source must be above the metal slab, "
+            "and the transmission plane below it; adjust the offsets, "
+            "--metal-thickness-lambda, --resolution, or --sz-lambda"
+        )
 
 
 def _reject_nonstandard_json_constant(value: str) -> None:

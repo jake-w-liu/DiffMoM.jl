@@ -145,7 +145,7 @@ function _build_periodic_ewald_terms(
         kappa_y = lattice.ky_bloch + 2π * q / lattice.dy
         kz = _spectral_kz(lattice.k, kappa_x, kappa_y)
         _periodic_is_wood_anomaly(kz, lattice.k) && continue
-        zk = im * kz / (2lattice.E)
+        zk = (im * kz / lattice.E) / 2
         spectral_terms[spectral_idx] =
             _PeriodicSpectralEwaldTerm(
                 kappa_x, kappa_y, kz, zk)

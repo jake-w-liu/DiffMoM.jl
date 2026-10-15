@@ -1,4 +1,6 @@
 using DiffMoM,Test
+include(joinpath(@__DIR__, "helpers", "native_raster_budget_error.jl"))
+
 
 @testset "Native filenames reject invalid budgets before input-sized work" begin
     base=read(joinpath(@__DIR__,"fixtures","native_box_port_attachment",

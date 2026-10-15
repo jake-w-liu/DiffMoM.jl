@@ -105,7 +105,11 @@ function roughness_factor(m::HurayRoughness, f::Real,
             _planar_metal_subnormal(m.radius^2)
         return _planar_surface_wide(f,sigma,mur,:huray,m)
     end
-    return 1 + 1.5 * area / denominator
+    result = 1 + 1.5 * area / denominator
+    # The numerator can overflow even when division by the screening
+    # denominator brings the complete correction back into range.
+    return isfinite(result) ? result :
+        _planar_surface_wide(f,sigma,mur,:huray,m)
 end
 
 """Complex surface impedance [Ohm] of a conductor with bulk `sigma` [S/m]

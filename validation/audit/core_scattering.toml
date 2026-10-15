@@ -2,15 +2,16 @@ schema_version = 1
 owner = "core_scattering"
 audit = "Fresh reset requested2026-10-15; prior results are context only"
 base_revision = "dd2f0eb4df088a25b95e7ee2b97fe52454d1fcc6"
-status = "active; broad source review and full validation pending"
+status = "active; all31 still-owned source bodies freshly read; latest targeted fixes verified; global validation pending"
 owned_source_count = 55
+currently_owned_source_count = 31
 owned_source_lines_at_reset = 43590
 additional_planar_lines_at_review = 2769
 export_occurrences = 278
 entrypoint_test_map = "TEMP/diffmom_fresh_core_dd2f0eb4/entrypoints.json"
 full_validation_pass = false
-julia_launch_state = "all source/support fixes frozen after final165+78+19+13 CRC; no Julia jobs; source review continues"
-not_claimed = ["whole-repository numerical proof", "absolute optimization", "complete current-run source coverage"]
+julia_launch_state = "narrow performance prototype/CRC only; parent owns global focused run and source freeze"
+not_claimed = ["whole-repository numerical proof", "absolute optimization", "complete runtime/performance coverage of every branch"]
 
 [ownership]
 root = ["src/fast", "src/postprocessing", "validation/pn3d", "test infrastructure", "CI/dependencies"]
@@ -30,19 +31,19 @@ performance = "No representative warmed Workflow/Types benchmark in this agent; 
 id = "geometry_basis"
 description = "Geometry, RWG and quadrature"
 files = ["src/basis/Greens.jl", "src/basis/NestedRWG.jl", "src/basis/PeriodicGreens.jl", "src/basis/Quadrature.jl", "src/basis/RWG.jl", "src/geometry/Mesh.jl", "src/geometry/MeshIO.jl"]
-domain = "Fresh complete formulas read in Greens, Quadrature and NestedRWG. Current exact480RWG Test36 and SIE158 plus source Tests14-16 exercise meshes/RWG/quadrature. Independent mesh-repair/coarsening, periodic Green and topology checks remain unrun this reset."
-implementation = "Complete bodies: Greens, Quadrature, NestedRWG. Partial bodies: RWG first190, Mesh first170, MeshIO CAD tail/function inventory. PeriodicGreens body unread."
-resources = "Nested injection dense-QR payload bound and quadrature finite mapping traced. Mesh parser/repair/coarsening resource lifetimes and periodic boundary budgets still require fresh review."
-performance = "Zero-allocation ordinary dipole consumers and warmed21RWG RHS measured; no isolated warmed geometry/Green/RWG benchmark yet."
+domain = "Fresh complete formulas read in Greens, Quadrature, NestedRWG, RWG and PeriodicGreens. Current exact480RWG Test36 and SIE158 plus source Tests14-16 exercise meshes/RWG/quadrature. Mesh-repair/coarsening checks root-owned. Public periodic scaling/cached/saturated identity checks5 and exact existing periodic123 checks pass."
+implementation = "Complete bodies: Greens, Quadrature, NestedRWG, RWG and PeriodicGreens. Mesh/MeshIO remainder transferred explicitly to root; this agent partial reads retained in per-file status."
+resources = "Nested injection dense-QR cap, quadrature finite mapping, periodic bounded hash candidate/term counts and phase precision freshly traced. Mesh parser/repair/coarsening lifetimes and mutation checks root-owned. Periodic new scaling/phase and exact existing123 cases pass; no hardware-wide memory guarantee claimed."
+performance = "Current ordinary periodic Green0B/28.968us measured warmed; static potential0B/136.14ns. No separate full mesh/RWG construction benchmark; exact480RWG end-to-end evidence includes these consumers."
 
 [[areas]]
 id = "assembly"
 description = "EFIE, sources, impedance, periodic and grounded assembly"
 files = ["src/assembly/CompositeOperator.jl", "src/assembly/DensityInterpolation.jl", "src/assembly/EFIE.jl", "src/assembly/Excitation.jl", "src/assembly/GroundedEFIE.jl", "src/assembly/Impedance.jl", "src/assembly/PeriodicEFIE.jl", "src/assembly/SingularIntegrals.jl", "src/assembly/SpatialPatches.jl"]
-domain = "Coherent source linearity/range fixed across five analytical families plus imported reactions and voltage sources:78 new checks and165 original source checks. Complete EFIE self/adjacent/distant singularity-subtraction and impedance/SIMP formulas freshly traced. Exact480RWG sphere and SIE158 exercise EFIE. Periodic/grounded derivations and independent singular-integral references remain incomplete."
-implementation = "Excitation coherent field/RHS, callback, cache and nested paths read in depth; some phase/grid/construction helpers remain partial. SpatialPatches exact-distance/boundary helpers and Grounded image kernel read partially. Complete new reads: CompositeOperator448, DensityInterpolation385, Impedance512, EFIE1139 lines. PeriodicEFIE/SingularIntegrals still unread; EFIE symmetry/Bloch/cache/row-exact/alias paths traced."
-resources = "New exact source budget rejection, callback-error count and streamed single-accumulator behavior tested; source normal allocations unchanged. EFIE adjacency/cache preflight, work ownership and xy-overlap traced; no shared mutable EFIE matvec scratch. Composite borrowed dense/local/sparse matrix mutation must invalidate any range metadata; confirmed joint underflow pending conservative guard. Full periodic/grounded budget runtime matrix not yet verified."
-performance = "Warmed ordinary two-child far/point fields and cached21RWG RHS compared with dd2:608/288/3760 bytes unchanged; imported cached21 RHS2128 bytes unchanged. Normal Composite guard-only prototype at21/176RWGs adds0 bytes and0.3764/21.0363 microseconds to1.5092/64.1255 microsecond baseline matvec; correctness/performance tradeoff recorded, no adopted fix yet. No warmed EFIE/grounded/periodic assembly measurements yet."
+domain = "Coherent source linearity/range fixed across five analytical families plus imported reactions and voltage sources:78 new checks and165 original source checks. Complete EFIE self/adjacent/distant singularity-subtraction and impedance/SIMP formulas freshly traced. Exact480RWG sphere and SIE158 exercise EFIE. Periodic/grounded image signs, Bloch reciprocity and streaming transpose completion traced. Independent scalar-positive potential limits expose/correct far and thin geometry cancellation. Full independent EFIE quadrature error/convergence certification is not claimed."
+implementation = "All9 assembly bodies now read end-to-end, including source phase/grid/constructor/cache/callback branches; exact spatial means/distances/grid and kmeans; grounded image/reflection/excitation; periodic streaming symmetry/incidence/task locks; singular potential and gradient; full EFIE symmetry/Bloch/cache/row-exact/alias paths."
+resources = "New exact source budget rejection, callback-error count and streamed single-accumulator behavior tested; source normal allocations unchanged. EFIE adjacency/cache preflight, work ownership and xy-overlap traced; no shared mutable EFIE matvec scratch. Composite guard inspects current borrowed dense/local/sparse storage, passes20 joint-range checks and retains0B ordinary mul!. Periodic task-private slabs/incidence/row locks and raw payload/term preflight read. Grounded sequential child budgets and three resident dense matrices traced. Complete periodic/grounded budget runtime matrix still requires remote/full evidence."
+performance = "Warmed ordinary two-child far/point fields and cached21RWG RHS compared with dd2:608/288/3760 bytes unchanged; imported cached21 RHS2128 bytes unchanged. Final Composite normal21/176RWG guard retains0B, measures2.2829->2.6648us and95.4939->120.2522us against cbf58e8f. Complete mutable-operand correctness screen costs16.7/25.9percent here; SIMD reduced the scalar guard cost. No warmed EFIE/grounded assembly benchmark."
 
 [[areas]]
 id = "solver"
@@ -57,10 +58,10 @@ performance = "480RWG end-to-end29.9828403s including17.7386937s reported compil
 id = "optimization"
 description = "Objectives, adjoints, density, bounded optimizers and verification"
 files = ["src/optimization/Adjoint.jl", "src/optimization/DensityAdjoint.jl", "src/optimization/DensityFiltering.jl", "src/optimization/MultiAngleRCS.jl", "src/optimization/Optimize.jl", "src/optimization/QMatrix.jl", "src/optimization/Verification.jl"]
-domain = "Density gradient/SIMP complex sign and gradient-verification spacing formulas freshly derived; exact original480RWG sphere optimization36a-e passed. Ratio quotient-rule and normalized sum-log/smoothmax derivatives traced from current complete optimizer bodies, projected Armijo/accepted trace behavior reviewed. Fresh reset independent optimizer scalar and line-search runtime cases still pending."
-implementation = "Complete bodies: DensityAdjoint, Verification. Partial: Adjoint first170, DensityFiltering first110, QMatrix first135. Complete new reads: MultiAngleRCS1324 and Optimize1891 lines, including validation, exact/direct/GMRES routes, accepted/trial factors, preconditioner reuse modes, final trace and line-search rollback."
-resources = "Density guarded derivative/exact bilinear precision and bounded complex-step retries traced. Optimizer normal/exact dense-payload estimates, L-BFGS history peak, trial/accepted factor overlap, exact fallback callbacks, and GMRES residual gates freshly traced. Q operator locking/alias scratch remains incomplete. Multi-angle weighted-gradient child narrowing candidate remains unverified."
-performance = "No fresh representative warmed gradient/Q/line-search benchmark; exact sphere elapsed/peak is a bounded end-to-end measurement with compile cost, not a warmed kernel result."
+domain = "Density gradient/SIMP complex sign and gradient-verification spacing formulas freshly derived; exact original480RWG sphere optimization36a-e passed. Ratio quotient-rule and normalized sum-log/smoothmax derivatives traced from current complete optimizer bodies, projected Armijo/accepted trace behavior reviewed. Current independent scalar weighted-gradient5 and two accepted smoothmax-log optimizer steps7 checks pass; originalTest34a-e26 checks plus asserts pass on adapted21RWG fixture."
+implementation = "All7 optimization bodies freshly complete: exact bilinear superaccumulator, SIMP derivatives, filter/hash/projection chain, Q factorization/certificates/locks, both optimizers and normalized objectives, verification retry rules. Final source review confirmed weighted-gradient narrowing, analytic pattern projection conjugation and filter cell misclassification; each has an independent concise regression."
+resources = "Density guarded derivative/exact bilinear precision and bounded complex-step retries traced. Optimizer normal/exact dense-payload estimates, L-BFGS history peak, trial/accepted factor overlap, exact fallback callbacks, and GMRES residual gates freshly traced. Q operator reused-lock/scratch and xy-overlap paths traced; unknown matrix-free child exact-entry limitations explicit. Weighted cold gradient streams one scalar per parameter instead of retaining a BigFloat parameter vector. Huge-offset filter uses existing rational cells; ordinary cells certify floor around boundaries. Fresh optimized public scalar gradients5 checks pass; broader optimizer budget matrix pending full validation."
+performance = "Warmed21RWG/2angle initial optimizer trace measured against cbf58e8f:24214->24182B,39.448->40.376us. Allocation profile identified/fixed4544B boxed-gradient regression with typed helper; same45range/7optimizer cases pass after fix.18/128triangle filter allocations8816->8816B and122527->122495B;5.12->5.09us and83.275->87.625us. No separate warmed Q/line-search sweep; exact sphere elapsed/peak includes compilation."
 
 [[areas]]
 id = "volume_2d"
@@ -111,15 +112,15 @@ performance = "Six warmed quadratic cases in ledger: new mean guard adds96-128 b
 "src/planar/PlanarPlots.jl" = "complete fresh body read; dimension-specific runtime/evidence limits stated in area"
 "src/Types.jl" = "first469 lines; delegated remainder"
 "src/Workflow.jl" = "entry validation1-216 and final solve/state379-end; delegated middle"
-"src/assembly/SpatialPatches.jl" = "exact means/distances/grid boundary helpers1-145,205-385; assignment remainder pending"
-"src/assembly/GroundedEFIE.jl" = "image-theory kernel/assembly opening partial; full grounded/farfield reflection paths pending"
-"src/assembly/Excitation.jl" = "deep coherent fields/RHS/cache/model-validation review and73checks; full phase and pattern construction helper review still partial"
+"src/assembly/SpatialPatches.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
+"src/assembly/GroundedEFIE.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
+"src/assembly/Excitation.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
 "src/geometry/Mesh.jl" = "bent-slotted panel generation and initial resource helpers first170; remainder unread"
 "src/geometry/MeshIO.jl" = "CAD tail1462-1540 and function inventory; actual parser bodies unread"
-"src/basis/RWG.jl" = "construction and periodic phase opening first190; remaining periodic pairing/evaluation unread"
-"src/optimization/Adjoint.jl" = "precision/bilinear opening first170; remaining body unread"
-"src/optimization/DensityFiltering.jl" = "conic-distance/bucket preflight first110; remaining body unread"
-"src/optimization/QMatrix.jl" = "types/factor/range/project opening first135; remaining body unread"
+"src/basis/RWG.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
+"src/optimization/Adjoint.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
+"src/optimization/DensityFiltering.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
+"src/optimization/QMatrix.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
 "src/mom3d/Types3D.jl" = "first180 partial; complete model/validation body pending"
 "src/error_estimation/Calibration.jl" = "scale/score/screen/context portions; delegated remainder"
 "src/error_estimation/Conditioning.jl" = "quadratic mean/variance tail and selected conditioning paths; delegated remainder/new variancefix"
@@ -127,13 +128,13 @@ performance = "Six warmed quadratic cases in ledger: new mean guard adds96-128 b
 "src/solver/NearFieldPreconditioner.jl" = "types/validation first165; delegated remainder"
 "src/solver/IterativeSolve.jl" = "lossless scaling/recovery100-236; delegated remainder"
 "src/solver/Solve.jl" = "validation/exact matrix product first220 plus error-factor helper; delegated remainder"
-"src/basis/PeriodicGreens.jl" = "body unread this reset; public exports and test references mapped only"
+"src/basis/PeriodicGreens.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
 "src/assembly/CompositeOperator.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
 "src/assembly/DensityInterpolation.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
 "src/assembly/EFIE.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
 "src/assembly/Impedance.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
-"src/assembly/PeriodicEFIE.jl" = "body unread this reset; public exports and test references mapped only"
-"src/assembly/SingularIntegrals.jl" = "body unread this reset; public exports and test references mapped only"
+"src/assembly/PeriodicEFIE.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
+"src/assembly/SingularIntegrals.jl" = "complete fresh body read; full derivation/API/error/ownership/complexity paths traced; bounded runtime evidence and remaining limits stated in area"
 "src/optimization/MultiAngleRCS.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
 "src/optimization/Optimize.jl" = "complete fresh body read; derivation, API branches, ownership/workspace and complexity traced; fresh runtime limits stated in area"
 "src/mom2d/Assembly2D.jl" = "body unread this reset; public exports and test references mapped only"
@@ -332,12 +333,13 @@ files = ["src/Types.jl", "src/Workflow.jl", "src/solver/IterativeSolve.jl", "src
 notes = "Root delegated fresh body audit after initial map; meanfix committed25174314, newvariancecompressionfix physicsowned; this ledger originalreadentries retained as partialevidence"
 
 [coverage_counts]
-complete_body_reads = 19
-partial_body_reads = 18
-unread_body_files = 18
-complete_body_reads_still_owned = 18
-help_requested = ["seven mom3d files,8229 area lines; six entire bodies unread and Types3D partial"]
-unread_files = ["src/basis/PeriodicGreens.jl", "src/assembly/CompositeOperator.jl", "src/assembly/DensityInterpolation.jl", "src/assembly/EFIE.jl", "src/assembly/Impedance.jl", "src/assembly/PeriodicEFIE.jl", "src/assembly/SingularIntegrals.jl", "src/optimization/MultiAngleRCS.jl", "src/optimization/Optimize.jl", "src/mom2d/Assembly2D.jl", "src/mom2d/Greens2D.jl", "src/mom2d/Mie2D.jl", "src/mom3d/Adjoint3D.jl", "src/mom3d/DDA3D.jl", "src/mom3d/EMDDA3D.jl", "src/mom3d/FFTDDA3D.jl", "src/mom3d/MaterialModels3D.jl", "src/mom3d/SurfaceIE3D.jl"]
+complete_body_reads = 35
+partial_body_reads = 11
+unread_body_files = 9
+complete_body_reads_still_owned = 31
+help_requested = []
+unread_files = ["src/mom2d/Assembly2D.jl", "src/mom2d/Greens2D.jl", "src/mom2d/Mie2D.jl", "src/mom3d/Adjoint3D.jl", "src/mom3d/DDA3D.jl", "src/mom3d/EMDDA3D.jl", "src/mom3d/FFTDDA3D.jl", "src/mom3d/MaterialModels3D.jl", "src/mom3d/SurfaceIE3D.jl"]
+count_scope = "Original55-source map including24 subsequently transferred files; unread list records this agent's reads only, not other agents' completed reviews"
 
 [[findings]]
 id = "accepted_power_finite_cancellation"
@@ -463,18 +465,18 @@ log = "TEMP/diffmom_fresh_source_final_crc.log"
 [delegated_after_freeze]
 root = ["src/mom3d/Types3D.jl", "src/mom3d/MaterialModels3D.jl", "src/mom3d/Adjoint3D.jl", "src/mom3d/FFTDDA3D.jl", "src/mom3d/DDA3D.jl"]
 physics = ["src/mom3d/EMDDA3D.jl", "src/mom3d/SurfaceIE3D.jl", "src/mom2d/Types2D.jl", "src/mom2d/Excitation2D.jl", "src/mom2d/Scatter2D.jl", "src/mom2d/Assembly2D.jl", "src/mom2d/Greens2D.jl", "src/mom2d/Mie2D.jl"]
-remaining_owner_sources = 33
-remaining_complete_body_reads = 21
-remaining_partial_body_reads = 9
-remaining_unread_body_files = 3
-remaining_unread_files = ["src/basis/PeriodicGreens.jl", "src/assembly/PeriodicEFIE.jl", "src/assembly/SingularIntegrals.jl"]
+remaining_owner_sources = 31
+remaining_complete_body_reads = 31
+remaining_partial_body_reads = 0
+remaining_unread_body_files = 0
+remaining_unread_files = []
 
 [[findings]]
 id = "composite_joint_underflow"
 dimension = "domain, implementation and performance tradeoff"
-status = "confirmed; complete conservative guard requested by root, source unchanged during global-test freeze"
+status = "fixed locally; complete conservative stored-operand screen preserves borrowed mutation; new Composite20 checks pass"
 verification = "a=2^-538, eight1x1 mass matrices a and theta=a with zero base: getindex and mul! return0; independent dyadic exact sum -8a^2=-2^-1073 is representable"
-fix = "pending: route extreme stored operands/input/coefficient/output scales through existing8704bit complete-product fallback; preserve mutable borrowed-storage semantics and0-byte normal mul!"
+fix = "route extreme directly stored dense/sparse/local operands, input, coefficients and alpha through existing8704bit complete-product fallback; scaled beta/output uses existing4352bit fallback; unknown matrix-free base retains its own product safeguards; 0-byte ordinary mul! verified"
 logs = ["TEMP/diffmom_fresh_composite_underflow_probe.log", "TEMP/diffmom_fresh_composite_guard_bench.log"]
 
 [[benchmarks]]
@@ -494,3 +496,77 @@ baseline_seconds = 6.41255e-5
 screen_seconds = 2.10363e-5
 protocol = "guard-only TEMP prototype; warmed min10alloc/min5time blocks1000calls, actual local mass176RWG fixture;1Julia/BLASthread; not adopted production"
 log = "TEMP/diffmom_fresh_composite_guard_bench.log"
+
+[body_read_closure]
+status = "all31 still-owned source bodies freshly read end-to-end; this is body coverage, not blanket runtime/performance proof"
+complete_sources = 31
+partial_sources = 0
+unread_sources = 0
+transferred_geometry = ["src/geometry/Mesh.jl", "src/geometry/MeshIO.jl"]
+latest_source_batch = ["src/assembly/CompositeOperator.jl", "src/assembly/Excitation.jl", "src/assembly/GroundedEFIE.jl", "src/assembly/PeriodicEFIE.jl", "src/assembly/SingularIntegrals.jl", "src/basis/PeriodicGreens.jl", "src/optimization/DensityFiltering.jl", "src/optimization/MultiAngleRCS.jl"]
+new_test = "test/test_assembly_range_reductions.jl"
+registered_in = ["test/focused_suite.jl", "test/full_reference_files.jl"]
+
+[[findings]]
+id = "static_potential_far_and_thin_cancellation"
+dimension = "science and implementation"
+status = "fixed locally;7 new checks pass"
+verification = "Unit right triangle P=(0,0,1e20): old potential -5e-21 violates positive integrand; at1e150 old -5e-151. Thin triangle(0,0),(1,0),(1,1e-20),Pz1 old -2.9289e-21 vs independent epsilon*(sqrt(2)-1)=4.1421356e-21"
+fix = "route far-observation and near-parallel-edge geometry through existing4352bit closed-form path before double cancellation; scalar and gradient share guard"
+logs = ["TEMP/diffmom_fresh_static_periodic_range_probe.log", "TEMP/diffmom_fresh_filter_thin_probe.log", "TEMP/diffmom_fresh_assembly_range_crc.log"]
+
+[[findings]]
+id = "periodic_intermediate_denominator_overflow"
+dimension = "science and implementation"
+status = "fixed locally;5 new checks pass incl independently supplied physics saturated case"
+verification = "Scaling periods1 to1e-308 and k,E1 to1e308 changes normalized G from -0.3738369-0.4204225im to -0.0663609+0.0795775im; derived2E,4ikz and phase/R overflow before finite result. Saturated E*z branch independently confirmed98.76percent error by physics agent"
+fix = "divide normalizers before huge/small lengths and wavenumbers; compute kz/E before halving; correct both public/cached Ewald terms and grounded full Green kernels"
+logs = ["TEMP/diffmom_fresh_static_periodic_range_probe.log", "TEMP/diffmom-periodic-saturated-denominator-before.log", "TEMP/diffmom_fresh_assembly_range_crc.log"]
+
+[[findings]]
+id = "multiangle_weighted_gradient_narrowing"
+dimension = "science, implementation and retained resource"
+status = "fixed locally;5 public scalar checks pass including reactive and finite cancellation"
+verification = "Z=Q=I=lambda1,M1e308,weight.01 has finite exact gradient2e306 but throws before weighting. M=minsubnormal,I=lambda.25,weight8 returns gnorm0 vs exactminsubnormal. Linear weighted Q=[1e30,1,1e30],weights[1,1,-1] has objective1 and gradient2"
+fix = "detect extreme original factors before child gradient conversion; stream original weighted bilinears at derived4factor8704bit precision, one parameter total at a time; certify finite objective/gradient cancellation"
+logs = ["TEMP/diffmom_fresh_multiangle_gradient_probe.log", "TEMP/diffmom_fresh_assembly_range_crc.log"]
+
+[[findings]]
+id = "analytic_pattern_phase_conjugation"
+dimension = "science and implementation"
+status = "fixed locally;4 new electric/magnetic/convention cases pass"
+verification = "Complex electric momentz1+2im direct farfieldz8.98755e9+1.79751e10im; default generated pattern gives conjugate because dot(field,realbasis) conjugates field"
+fix = "project dot(realbasis,field), conjugating stored coefficients only for requested exp_minus_iwt convention"
+logs = ["TEMP/diffmom_fresh_pattern_phase_probe.log", "TEMP/diffmom_fresh_assembly_range_crc.log"]
+
+[[findings]]
+id = "filter_hash_large_offset_and_cell_floor"
+dimension = "science, implementation and bounded resources"
+status = "fixed locally;4 new checks pass"
+verification = "Valid3triangle mesh centroids x[-1e16,1,nextfloat(1)],r_min.01 returns W23=0 instead of.009999999999999778 because rounded common-offset quotient jumps256 Int cells"
+fix = "restrict ordinary Float64 cell quotients to safe small band; use existing rational-cell hash beyond it; certify ordinary floors against error bound with exact rational boundary fallback, preserving same27neighbor stencil and triplet preflight"
+logs = ["TEMP/diffmom_fresh_filter_thin_probe.log", "TEMP/diffmom_fresh_assembly_range_crc.log"]
+
+[[evidence]]
+id = "new_assembly_range_crc45"
+checks = 45
+result = "all45 pass; Composite20/static7/periodic5/MultiAngle5/filter4/pattern4"
+log = "TEMP/diffmom_fresh_assembly_range_crc.log"
+peak_rss_bytes = 534917120
+notes = "1Julia/BLASthread;300M heap hint; nearby evidence follows; parent global/full latest-batch validation pending"
+
+[[evidence]]
+id = "assembly_nearby_original_bodies"
+result = "Original sourceTests14-16:165 pass; exact full staticTest44:10 pass; MultiAngleTest34a-e:26 plus original asserts pass on adapted21RWG fixture. Initial periodic attempt had two TEMP-driver missing-erfc-import errors, then complete corrected original periodic37 passed123 in continuation."
+logs = ["TEMP/diffmom_fresh_assembly_nearby_crc.log", "TEMP/diffmom_fresh_assembly_remaining_crc.log"]
+remaining_checks = "Exact existing periodic123/filter160/weightedsource78/focusedoptimizer7/filterrange60/projection18 all pass in corrected continuation"
+peak_rss_bytes = 1158832128
+limits = "MultiAngle original algorithm/assertions ran with rebuilt21RWG fixture, not original preceding shared fixture. Shared-workspace concurrency helper here ran1thread; separate exact SIE158 ran4threads."
+
+[[benchmarks]]
+id = "current_assembly_range_batch_normal_before_perf_tuning"
+log = "TEMP/diffmom_fresh_assembly_range_bench.log"
+protocol = "Same-process legacy cbf58e8f renamed bodies versus current; warmed min10 allocations/min5 timing blocks;1Julia/BLASthread; timing is host-sensitive"
+workloads = ["Composite21:0->0B,2.2176->2.7774us", "Composite176:0->0B,87.9272->120.7938us", "Filter18:8816->8816B,4.47->4.90us", "Filter128:122527->122479B,89.615->93.935us", "Optimizer21/2angles/initial accepted trace:24230->28774B,38.494->51.388us", "Current ordinary static potential:0B/112.05ns", "Current periodic Green:0B/28.991us"]
+peak_rss_bytes = 601993216
+followup = "Profile identified elementwise loop boxing in closure-captured optimizer gradient; typed-kernel and SIMD scan prototypes evaluated before adoption"

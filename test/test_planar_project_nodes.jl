@@ -1,4 +1,6 @@
 using DiffMoM,Test,LinearAlgebra
+include(joinpath(@__DIR__, "helpers", "floating_project.jl"))
+
 
 @testset "circuit floating gauges preserve terminal power and incidence" begin
     D=planar_port_incidence(4,[(1,2),(3,4)])

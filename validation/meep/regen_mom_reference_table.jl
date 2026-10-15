@@ -1,8 +1,8 @@
 # regen_mom_reference_table.jl — regenerate the MoM-side total reflectance
 # for the five Meep cross-validation cases using the current DiffMoM periodic
 # solver. The external FDTD (Meep) reflectances are preserved from the existing
-# results_meep_validation.csv; only R_MoM (and the |ΔR| derived from it) is
-# recomputed with the newest code.
+# results_meep_validation.csv. R_MoM and derived differences/transmission are
+# recomputed; metal_fill_pct describes the actual pixelated MoM mask.
 #
 # Run: julia --project=DiffMoM.jl DiffMoM.jl/validation/meep/regen_mom_reference_table.jl
 
@@ -67,29 +67,56 @@ end
 
 # Five cross-validation cases. PEC plate is a full half-wavelength cell; the four
 # slots are 1.2λ, 14×14 pixelated PEC/void unit cells with centered rectangular slots.
-cases = [
-    (name="PEC_plate_half_lambda", fill=100.0, dx=0.5, Nx=10, swx=0.0,  swy=0.0),
-    (name="slot_wx0p15_wy0p20",    fill=97.0,  dx=1.2, Nx=14, swx=0.15, swy=0.20),
-    (name="slot_wx0p25_wy0p20",    fill=95.0,  dx=1.2, Nx=14, swx=0.25, swy=0.20),
-    (name="slot_wx0p40_wy0p20",    fill=92.0,  dx=1.2, Nx=14, swx=0.40, swy=0.20),
-    (name="slot_wx0p50_wy0p50",    fill=75.0,  dx=1.2, Nx=14, swx=0.50, swy=0.50),
+const _MEEP_REFERENCE_CASES = [
+    (name="PEC_plate_half_lambda", dx=0.5, Nx=10, swx=0.0,  swy=0.0),
+    (name="slot_wx0p15_wy0p20",    dx=1.2, Nx=14, swx=0.15, swy=0.20),
+    (name="slot_wx0p25_wy0p20",    dx=1.2, Nx=14, swx=0.25, swy=0.20),
+    (name="slot_wx0p40_wy0p20",    dx=1.2, Nx=14, swx=0.40, swy=0.20),
+    (name="slot_wx0p50_wy0p50",    dx=1.2, Nx=14, swx=0.50, swy=0.50),
 ]
 
-# Preserve external FDTD (Meep) reflectances from the existing table.
-oldpath = joinpath(DATA_DIR, "results_meep_validation.csv")
-old = CSV.read(oldpath, DataFrame)
-meep_R = Dict(string(old.case[i]) => old.R_MEEP[i] for i in eachindex(old.case))
-
-rows = DataFrame(case=String[], metal_fill_pct=Float64[], R_MoM=Float64[], R_MEEP=Float64[],
-                 abs_diff_R=Float64[], T_MoM=Float64[], T_MEEP=Float64[], abs_diff_T=Float64[])
-for c in cases
-    R_mom = mom_total_reflectance(dx_lambda=c.dx, dy_lambda=c.dx, Nx=c.Nx, Ny=c.Nx, slot_wx_frac=c.swx, slot_wy_frac=c.swy)
-    R_meep = get(meep_R, c.name, NaN)
-    T_mom = 1.0 - R_mom
-    T_meep = 1.0 - R_meep
-    push!(rows, (c.name, c.fill, R_mom, R_meep, abs(R_mom - R_meep), T_mom, T_meep, abs(T_mom - T_meep)))
-    println("  $(c.name): R_MoM=$(round(R_mom, digits=5))  R_MEEP=$(round(R_meep, digits=5))  |ΔR|=$(round(abs(R_mom-R_meep), digits=5))")
+function _preserved_meep_reflectances(old)
+    all(name->hasproperty(old,name),(:case,:R_MEEP)) ||
+        throw(ArgumentError("reference table requires case and R_MEEP columns"))
+    values=Dict{String,Float64}()
+    for row in eachrow(old)
+        row.case isa AbstractString || throw(ArgumentError("reference case names must be strings"))
+        name=String(row.case)
+        haskey(values,name) && throw(ArgumentError("duplicate external Meep case $name"))
+        value=row.R_MEEP
+        value isa Real && !(value isa Bool) && isfinite(value) && isfinite(Float64(value)) ||
+            throw(ArgumentError("external Meep reflectance for $name must be finite"))
+        values[name]=Float64(value)
+    end
+    for c in _MEEP_REFERENCE_CASES
+        haskey(values,c.name) || throw(ArgumentError("missing external Meep case $(c.name)"))
+    end
+    return values
 end
 
-CSV.write(oldpath, rows)
-println("\n✓ Updated $(oldpath)")
+function regenerate_mom_reference_table(path=joinpath(DATA_DIR,"results_meep_validation.csv");
+        reflectance=mom_total_reflectance)
+    # Reject missing/ambiguous/nonfinite external evidence before any solve
+    # and before opening the original table for writing.
+    meep_R=_preserved_meep_reflectances(CSV.read(path,DataFrame))
+    rows=DataFrame(case=String[],metal_fill_pct=Float64[],R_MoM=Float64[],R_MEEP=Float64[],
+        abs_diff_R=Float64[],T_MoM=Float64[],T_MEEP=Float64[],abs_diff_T=Float64[])
+    lambda0=C0/(10.0*1e9) # Same default frequency and mask arithmetic as the solve.
+    for c in _MEEP_REFERENCE_CASES
+        mask=build_rect_slot_mask(c.Nx,c.Nx,c.dx*lambda0,c.dx*lambda0,c.swx,c.swy)
+        fill_pct=100count(mask)/length(mask)
+        R_mom=reflectance(dx_lambda=c.dx,dy_lambda=c.dx,Nx=c.Nx,Ny=c.Nx,
+            slot_wx_frac=c.swx,slot_wy_frac=c.swy)
+        R_meep=meep_R[c.name]
+        T_mom=1.0-R_mom;T_meep=1.0-R_meep
+        values=(fill_pct,R_mom,R_meep,abs(R_mom-R_meep),T_mom,T_meep,abs(T_mom-T_meep))
+        all(isfinite,values) || throw(ArgumentError("nonfinite reference result for $(c.name)"))
+        push!(rows,(c.name,values...))
+        println("  $(c.name): R_MoM=$(round(R_mom,digits=5))  R_MEEP=$(round(R_meep,digits=5))  |ΔR|=$(round(abs(R_mom-R_meep),digits=5))")
+    end
+    CSV.write(path,rows)
+    println("\n✓ Updated $path")
+    return rows
+end
+
+abspath(PROGRAM_FILE)==(@__FILE__) && regenerate_mom_reference_table()

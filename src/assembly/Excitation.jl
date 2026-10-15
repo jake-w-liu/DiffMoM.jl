@@ -1573,8 +1573,10 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
         for j in 1:nϕ
             rhat, eθ, eϕ = _spherical_basis(θ[i], ϕ[j])
             Fvec = _dipole_farfield_unphased(dipole, rhat, k)
-            Fθ[i, j] = dot(Fvec, eθ)
-            Fϕ[i, j] = dot(Fvec, eϕ)
+            theta_projection = dot(eθ, Fvec)
+            phi_projection = dot(eϕ, Fvec)
+            Fθ[i, j] = convention == :exp_minus_iwt ? conj(theta_projection) : theta_projection
+            Fϕ[i, j] = convention == :exp_minus_iwt ? conj(phi_projection) : phi_projection
         end
     end
 

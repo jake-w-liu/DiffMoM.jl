@@ -77,6 +77,55 @@ struct ImpedanceLoadedAdjointOperator{T<:AbstractMatrix{ComplexF64},
     parent::ImpedanceLoadedOperator{T,S}
 end
 
+# Four bounded factors and two Int-indexable reductions stay in normal range.
+# The matrices are borrowed and mutable, so inspect their current storage.
+@inline function _composite_extreme_component(value::Real)
+    iszero(value) && return false
+    magnitude = abs(Float64(value))
+    return !isfinite(magnitude) || magnitude < 2.0^-128 || magnitude >= 2.0^129
+end
+@inline _composite_extreme_factor(value::Number) =
+    _composite_extreme_component(real(value)) || _composite_extreme_component(imag(value))
+_composite_values_require_exact(values) = any(_composite_extreme_factor, values)
+function _composite_values_require_exact(
+        values::AbstractArray{T}) where {T<:Union{Float32,Float64,ComplexF32,ComplexF64}}
+    # A complete OR reduction lets ordinary dense storage use SIMD. Keep the
+    # same component bounds, including nonfinite values, as the scalar guard.
+    required = false
+    @inbounds @simd for index in eachindex(values)
+        real_magnitude = abs(Float64(real(values[index])))
+        imag_magnitude = abs(Float64(imag(values[index])))
+        required |= ((!iszero(real_magnitude)) & (real_magnitude < 2.0^-128)) |
+                    !(real_magnitude < 2.0^129) |
+                    ((!iszero(imag_magnitude)) & (imag_magnitude < 2.0^-128)) |
+                    !(imag_magnitude < 2.0^129)
+    end
+    return required
+end
+_composite_stored_values(::AbstractMatrix) = nothing
+_composite_stored_values(matrix::StridedMatrix) = matrix
+_composite_stored_values(matrix::SparseArrays.AbstractSparseMatrixCSC) = nonzeros(matrix)
+_composite_stored_values(matrix::LocalMassMatrix) = matrix.vals
+_composite_stored_values(matrix::Diagonal) = matrix.diag
+_composite_stored_values(matrix::Union{LinearAlgebra.Adjoint,LinearAlgebra.Transpose,
+                                     LinearAlgebra.Symmetric,LinearAlgebra.Hermitian}) =
+    _composite_stored_values(parent(matrix))
+function _composite_product_requires_exact(A::ImpedanceLoadedOperator, input, alpha_scale)
+    _composite_extreme_factor(alpha_scale) && return true
+    _composite_values_require_exact(input) && return true
+    values = _composite_stored_values(A.Z_base)
+    # An arbitrary matrix-free base retains its own product safeguards.
+    values === nothing || !_composite_values_require_exact(values) || return true
+    @inbounds for patch in eachindex(A.theta)
+        iszero(A.theta[patch]) && continue
+        _composite_extreme_factor(A.theta[patch]) && return true
+        values = _composite_stored_values(A.Mp[patch])
+        values === nothing && (values = A.Mp[patch])
+        _composite_values_require_exact(values) && return true
+    end
+    return false
+end
+
 # ─── AbstractMatrix interface ──────────────────────────────────────
 
 Base.size(A::ImpedanceLoadedOperator) = size(A.Z_base)
@@ -164,8 +213,14 @@ function _composite_entry(
 
     total = ComplexF64(
         _composite_base_entry(A, row, column, adjoint_mode))
+    _composite_extreme_factor(total) &&
+        return _composite_entry_bigfloat(A, row, column, adjoint_mode)
     @inbounds for patch in eachindex(A.theta)
         iszero(A.theta[patch]) && continue
+        mass_entry = _composite_mass_entry(A, patch, row, column, adjoint_mode)
+        (_composite_extreme_factor(A.theta[patch]) ||
+         _composite_extreme_factor(mass_entry)) &&
+            return _composite_entry_bigfloat(A, row, column, adjoint_mode)
         contribution =
             _composite_patch_factor(A, patch, adjoint_mode) *
             _composite_mass_entry(
@@ -222,6 +277,12 @@ end
         beta_scale::Number,
         overwrite::Bool,
         row::Int)
+    if _composite_extreme_factor(value) || _composite_extreme_factor(alpha_scale) ||
+       (!overwrite && (_composite_extreme_factor(previous) ||
+                       _composite_extreme_factor(beta_scale)))
+        return _composite_scaled_output_bigfloat(
+            value, previous, alpha_scale, beta_scale, overwrite, row)
+    end
     alpha_term = alpha_scale * value
     if overwrite
         converted = ComplexF64(alpha_term)
@@ -385,7 +446,8 @@ function _composite_mul!(
     overwrite = iszero(beta_scale)
     lock(A.work_lock)
     try
-        if _composite_unscaled_product!(A, input_read, adjoint_mode)
+        if !_composite_product_requires_exact(A, input_read, alpha_scale) &&
+           _composite_unscaled_product!(A, input_read, adjoint_mode)
             @inbounds for row in eachindex(A.work_total)
                 A.work_term[row] = _composite_scaled_output(
                     A.work_total[row], y[row],

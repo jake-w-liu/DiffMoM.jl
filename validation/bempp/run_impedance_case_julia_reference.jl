@@ -60,7 +60,9 @@ eta0 = 376.730313668
 
 Lx = 4 * lambda0
 Ly = 4 * lambda0
-Nx, Ny = 12, 12
+Nx = parse_int_flag(ARGS, "--nx", 12)
+Ny = parse_int_flag(ARGS, "--ny", 12)
+Nx > 0 && Ny > 0 || throw(ArgumentError("--nx and --ny must be positive"))
 
 theta_uniform = parse_float_flag(ARGS, "--theta-ohm", 200.0)  # Zs = i*theta_uniform [ohm]
 n_theta = parse_int_flag(ARGS, "--n-theta", 180)
@@ -214,6 +216,8 @@ operator_checks = Dict(
     "phi_inc_deg" => phi_inc_deg,
     "num_rwg" => N,
     "num_triangles" => Nt,
+    "structured_nx" => Nx,
+    "structured_ny" => Ny,
     "rhs_l2_norm" => rhs_l2,
     "solve_residual_l2_abs" => res_l2,
     "solve_residual_l2_rel" => res_rel,

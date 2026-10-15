@@ -116,7 +116,7 @@ body_review = "complete"
 domain = "PMCHWT/Muller regional weights, matched forcing weights, principal-value K and local nhat-cross Gram residue, complex-medium prefactors, near vertex/edge quadrature and closed nonperiodic RWG constraints reviewed. Dense weighted regional overflow confirmed and fixed using the scalar matrix-free contraction."
 implementation = "All medium/build/assembly/solve paths, two-pass near adjacency, shared regional geometry, scalar indexing, locked block apply, scaled output, actual direct/matrix-free solves and checked factor wrapper read. New10 plus original158 checks pass."
 resources = "Ten-N² dense block peak retained; new guarded fill adds no dense buffer. Matrix-free seven work vectors and shared EFIE/MFIE geometry charged; lock has finally release and block inputs copied before output mutation. Gram has independent triplet ceiling."
-performance = "Six-RWG PMCHWT1.2515 to1.2469ms,71079 to105655 allocated bytes; Muller1.2552 to1.3537ms,76663 to145879bytes. Profile identifies conservative MPFR retries for exact structural cancellations; follow-up exactness certificate proposed to root, not implemented during source freeze. No all-size SIE optimization claim."
+performance = "Same-process exact25174314 baseline: six-RWG PMCHWT0.7215 to0.7304ms,81143 to81159B (baseline allocation within16B); Muller0.7358 to0.7875ms,86727 to121351B. Component-level FMA/TwoSum exactness removes two avoidable cold retries. Two Muller non-dyadic weighted cancellations still need MPFR; the remaining cost preserves finite small components. No all-size optimization claim."
 
 [[findings]]
 candidate = "SVD compression changes a small indefinite quadratic variance"
@@ -200,5 +200,33 @@ logs = ["TEMP/diffmom-conditioning-perf.log", "TEMP/diffmom-variance-vie-perf.lo
 method = "Julia1.13.1 Windows, BLAS1; warm twice then GC; median7 batches; exact25174314 prior methods loaded under temporary private names within the same process"
 
 [remaining]
-current_revision_ci = "Root owns commit/push/main and final GitHub focused/full validation; no pass claimed for these uncommitted changes."
+current_revision_ci = "Root pushed cbf58e8f after focused Pkg.test passed. Final Huray/SIE follow-up local CRC passes; their pending commit and full GitHub validation remain root-owned."
 coverage_limits = ["Full core Test17/17tail and broad fresh cross-platform solver regression execution are parent CI evidence", "Opaque native factor allocation lifetime/RSS and arbitrary manual factor mutation not exhaustively certified", "No representative all-problem-size performance target was supplied; measured workloads above are bounded", "Continuum convergence and arbitrary material/geometry proof exceed finite tests"]
+
+
+[[evidence]]
+id = "final_surface_sie_exactness_certificate"
+status = "passed and measured"
+logs = ["TEMP/diffmom-huray-sie-final-crc.log", "TEMP/diffmom-huray-sie-final-perf.log", "TEMP/diffmom-sie-exact-certificate-probe.log"]
+checks = "new weighted SIE10 plus original158 pass again after final certificate; Huray4 plus roughness91/conductor906 pass"
+method = "Safe-band primitive products use FMA residuals and TwoSum to certify only the flagged component. Unrelated ordinary rounding cannot force a retry; any inexact flagged product/reduction retains the wide fallback. Captured legitimate public-assembly pairs prove the remaining two Muller retries have non-dyadic products."
+peak_rss_bytes = 1205166080
+performance = "Same-process original baseline loaded under a private temporary name; warmed twice, GC, median7 calls and cumulative allocated bytes. PMCHWT81143 to81159B; Muller86727 to121351B; ordinary Huray0B both,8.76 to9.01ns with10000-call batches."
+note = "An initial temporary measurement driver parse typo occurred after its SIE timings; corrected final driver reran both SIE test files and all measurements successfully. It was not a package failure."
+
+
+[[evidence]]
+id = "fresh_independent_cross_path_closure"
+status = "38 passed; no further verified bug in these invariants"
+log = "TEMP/diffmom-final-scientific-invariants.log"
+checks = "15 reciprocal/passive PEC-PMC folded dense-FFT-UFFT and independent material/thickness FD adjoint;6 refined conformal dense-lattice/port permutation;3 rotated proper-complex conditioning;7 Mie symmetry/matching/truncation-qualified boundary;7 retained forward-adjoint residual and failed-budget transaction"
+elapsed_seconds = 42.8
+peak_rss_bytes = 738770944
+note = "An initially too-tight default-order Mie boundary oracle was rejected by its independently computed omitted tail; requested order32 resolves boundary7.36e-17 and default residual2.72e-9 lies below tail2.89e-9. Full corrected38-check driver reran successfully."
+
+[[evidence]]
+id = "independent_core_diff_review"
+status = "complete fresh diff/context review; one additional verified defect transferred and corrected by owner"
+files = ["src/assembly/CompositeOperator.jl", "src/assembly/SingularIntegrals.jl", "src/assembly/Excitation.jl", "src/assembly/PeriodicEFIE.jl", "src/basis/PeriodicGreens.jl", "src/assembly/GroundedEFIE.jl", "src/optimization/MultiAngleRCS.jl", "src/optimization/DensityFiltering.jl"]
+result = "Borrowed mutable-storage scan, alpha-beta joint products, weighted pre-narrowing bilinear contraction, FMA/TwoSum primitive certificate, exact filter-cell floor and pattern phasor projection policies checked. The saturated2im*kz denominator defect was independently reproduced through public greens_periodic_correction and transferred to core; owner applied division-first fix and regression. No additional verified defect after that source correction."
+limits = "This is independent review of changed code and neighboring contracts, not a replacement claim of whole-body ownership for these8 files. Current full remote validation remains parent evidence."

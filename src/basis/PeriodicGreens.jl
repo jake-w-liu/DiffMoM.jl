@@ -251,7 +251,7 @@ function _ewald_spatial_kernel(R::Float64, k::Float64, E::Float64)
             "Float64 range"))
 
     numerator = exp(exponent) * scaled_erfc_real
-    result = (numerator / R) / (4π)
+    result = (numerator / (4π)) / R
     if isfinite(result) && abs(result) >= floatmin(Float64)
         return result
     end
@@ -390,7 +390,7 @@ function _ewald_self_correction(R::Float64, k::Float64, E::Float64)
 
     # For R > 0: compute K_sp(R) - G_0(R) directly
     K_sp = _ewald_spatial_kernel(R, k, E)
-    G_0 = (_periodic_rwg_bloch_phase(k, R) / R) / (4π)
+    G_0 = (_periodic_rwg_bloch_phase(k, R) / (4π)) / R
     return K_sp - G_0
 end
 
@@ -573,7 +573,7 @@ end
         scaled_separation = E * separation
         if isinf(scaled_separation)
             selected = scaled_separation > 0 ? negative_phase : positive_phase
-            return selected / (2im * kz)
+            return (selected / (2im)) / kz
         end
         isfinite(scaled_separation) ||
             throw(OverflowError(
@@ -581,7 +581,7 @@ end
         return (
             negative_phase * erfc(zk - scaled_separation) +
             positive_phase * erfc(zk + scaled_separation)
-        ) / (4im * kz)
+        ) / (4im) / kz
     end
 
     # For kz=-iγ, evaluating exp(+γ|z|)*erfc(q+E|z|)
@@ -872,7 +872,7 @@ function greens_periodic_correction(r::SVector{3,<:Real},
             # plane-wave factor e^{-ikz|Δz|}/(2ikz) as E → ∞ (no Ewald damping):
             #   spec(Δz) = [ e^{-ikz Δz} erfc(ikz/2E - E Δz)
             #              + e^{+ikz Δz} erfc(ikz/2E + E Δz) ] / (4 i kz)
-            zk = im * kz / (2E)
+            zk = (im * kz / E) / 2
             spec_val = _periodic_spectral_vertical_kernel(
                 kz, zk, E, drho_z)
 

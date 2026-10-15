@@ -1,4 +1,5 @@
 # test_periodic_topology.jl — Tests for periodic MoM + topology optimization modules
+include(joinpath(@__DIR__, "helpers", "filter_allocations.jl"))
 #
 # Covers: PeriodicGreens (Helmholtz-Ewald), PeriodicEFIE, DensityInterpolation,
 #         DensityFiltering, DensityAdjoint, PeriodicMetrics

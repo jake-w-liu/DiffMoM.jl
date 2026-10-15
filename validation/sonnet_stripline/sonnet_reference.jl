@@ -327,13 +327,14 @@ function reference_run(em::AbstractString, source::AbstractString;
     dst = joinpath(output_dir, basename(source))
     ispath(dst) && error("reference directory already contains $(basename(source))")
     cp(source, dst)
+    source_snapshot=read(dst,String)
     dependency_hashes=Dict{String,String}()
     for dependency in dependencies
         isfile(dependency) || error("missing Sonnet dependency: $dependency")
         target=joinpath(output_dir,basename(dependency))
         ispath(target) && error("duplicate Sonnet dependency name: $(basename(dependency))")
         cp(dependency,target)
-        dependency_hashes[basename(dependency)]=bytes2hex(sha256(read(dependency)))
+        dependency_hashes[basename(dependency)]=bytes2hex(sha256(read(target)))
     end
     cmd = Cmd(`$em -v $dst`; dir=output_dir)
     started = Dates.now(Dates.UTC)
@@ -345,7 +346,7 @@ function reference_run(em::AbstractString, source::AbstractString;
     logf = joinpath(output_dir, "sondata", splitext(basename(source))[1],
         "log_response.log")
     metadata = Dict("source" => abspath(source), "source_sha256" =>
-        bytes2hex(sha256(read(source))), "em" => abspath(em),
+        bytes2hex(sha256(source_snapshot)), "em" => abspath(em),
         "command" => string(cmd), "started_utc" => string(started),
         "ended_utc" => string(Dates.now(Dates.UTC)),
         "process_success" => success(process), "julia_version" => string(VERSION),
@@ -355,7 +356,7 @@ function reference_run(em::AbstractString, source::AbstractString;
     version===nothing || (metadata["engine_version"]=strip(version[1]))
     counts=[parse(Int,m[1]) for m in eachmatch(r"requires (\d+) subsections",stdout)]
     isempty(counts) || (metadata["native_subsections"]=counts)
-    box=match(r"(?m)^BOX \d+ \S+ \S+ (\d+) (\d+)",read(source,String))
+    box=match(r"(?m)^BOX \d+ \S+ \S+ (\d+) (\d+)",source_snapshot)
     if box!==nothing
         halfcounts=parse.(Int,collect(box.captures))
         metadata["box_halfcell_counts"]=halfcounts

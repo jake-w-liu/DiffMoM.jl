@@ -14,6 +14,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validation-reports:
+    name: Validation runner contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: validation/tests/requirements.txt
+      - name: Install validation test dependencies
+        run: python -m pip install -r validation/tests/requirements.txt
+      - name: Check validation reports and command contracts
+        run: python -m unittest discover -s validation/tests -p 'test_*.py'
+
   test:
     name: Julia ${{ matrix.julia }} / ${{ matrix.os }} / ${{ matrix.threads }} thread(s)
     runs-on: ${{ matrix.os }}

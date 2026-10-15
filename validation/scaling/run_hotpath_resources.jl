@@ -111,6 +111,12 @@ function main()
                iterations=1, samples=3)
         random_x = randn(rng, ComplexF64, length(dda_x))
         record("DDA random mul!, $(side^3) voxels", () -> mul!(dda_y, dda, random_x))
+        fft_dda = fft_dda_operator_3d(voxels, k, 2.5 - 0.05im)
+        record("FFT DDA mul!, $(side^3) voxels", () -> mul!(dda_y, fft_dda, random_x))
+        fft_em = fft_em_dda_operator_3d(voxels, k, 2.5 - 0.05im, 1.0)
+        em_x = randn(rng, ComplexF64, size(fft_em, 2))
+        em_y = similar(em_x)
+        record("FFT EM-DDA mul!, $(side^3) voxels", () -> mul!(em_y, fft_em, em_x))
     end
 
     mesh2d = Mesh2D((-0.15, 0.15), (-0.15, 0.15), 8, 8)

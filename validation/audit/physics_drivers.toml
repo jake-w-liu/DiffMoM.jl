@@ -1,0 +1,116 @@
+schema_version = 1
+owner = "planar_physics_audit"
+audit_date = "2026-10-15"
+base_revision = "cbf58e8f"
+status = "All16 assigned driver bodies and12 example bodies plus one included helper reviewed; confirmed auxiliary fixes pass local checks; parent owns final commit/CI evidence"
+whole_repository_bug_free_claim = false
+global_optimization_claim = false
+
+[complete_body_reads]
+"validation/mie/mesh_fixture.jl" = "71 lines; complete fresh body read"
+"validation/mie/validate_dielectric_mie_dda.jl" = "201 lines; complete fresh body read"
+"validation/mie/validate_mie_rcs.jl" = "378 lines; complete fresh body read"
+"validation/grounded/validate_greens_vertical_separation.jl" = "86 lines; complete fresh body read"
+"validation/grounded/validate_grounded_mom.jl" = "108 lines; complete fresh body read"
+"validation/paper/generate_consistency_report.jl" = "5 lines; complete fresh body read"
+"validation/paper/run_beam_steering_case.jl" = "350 lines; complete fresh body read"
+"validation/paper/run_convergence_study.jl" = "232 lines; complete fresh body read"
+"validation/scaling/run_cost_scaling.jl" = "111 lines; complete fresh body read"
+"validation/scaling/run_hotpath_resources.jl" = "149 lines; complete fresh body read"
+"validation/robustness/run_robustness_sweep.jl" = "309 lines; complete fresh body read"
+"validation/po/compare_geometries.m" = "184 lines; complete fresh body read"
+"validation/po/compare_po_aircraft.m" = "319 lines; complete fresh body read"
+"validation/po/generate_julia_po_aircraft.jl" = "120 lines; complete fresh body read"
+"validation/po/validate_po_vs_pofacets.jl" = "465 lines; complete fresh body read"
+"validation/consistency/generate_consistency_report.jl" = "278 lines; complete fresh body read"
+"examples/planar_microstrip_thru.jl" = "68 lines; complete fresh body read"
+"examples/planar_patch.jl" = "57 lines; complete fresh body read"
+"examples/planar_spiral.jl" = "55 lines; complete fresh body read"
+"examples/planar_stripline_benchmark.jl" = "46 lines; complete fresh body read"
+"examples/04_pec_sphere_mie.jl" = "192 lines; complete fresh body read"
+"examples/05_solver_methods.jl" = "137 lines; complete fresh body read"
+"examples/08_solve_scattering_workflow.jl" = "158 lines; complete fresh body read"
+"examples/09_mom_vs_po.jl" = "91 lines; complete fresh body read"
+"examples/21_grounded_rcs_demo.jl" = "149 lines; complete fresh body read"
+"examples/21_near_total_field_rayleigh_sphere.jl" = "340 lines; complete fresh body read"
+"examples/22_po_ptd_comparison.jl" = "222 lines; complete fresh body read"
+"examples/23_circular_plate_ptd.jl" = "220 lines; complete fresh body read"
+"examples/grounded_rcs/framework_pixel_design.jl" = "41 lines; complete fresh body read"
+
+[[review_group]]
+files = ["validation/mie/mesh_fixture.jl", "validation/mie/validate_mie_rcs.jl", "validation/mie/validate_dielectric_mie_dda.jl"]
+domain = "PEC Mie incidence/backscatter angle, positive peak-phasor input/radiated power, bistatic4pi normalization, dielectric equal-volume radius and loss convention reviewed."
+implementation = "Current public solve, RCS, material and mesh APIs traced; CSV columns and numerical acceptance gates read; icosphere winding/refinement and mesh-resource bounds inspected."
+resources = "Shared fixture preflights refinement before allocation; temporary STL stream is closed, deleted and protected by atexit cleanup. The3-subdivision PEC sphere and default11-cubed DDA studies were not executed during this bounded closure."
+performance = "Large study timings include first-call compilation; they are validation experiments, not warmed kernel benchmarks. No performance claim is inferred from their printed timings."
+
+[[review_group]]
+files = ["validation/grounded/validate_greens_vertical_separation.jl", "validation/grounded/validate_grounded_mom.jl"]
+domain = "Outgoing spectral branch, Ewald splitting invariance, independent Floquet representation, PEC image signs and full vector reflected-power rather than copolar-only conservation reviewed."
+implementation = "Periodic constructors, mesh/slot indexing, grounded solve and postprocessing keyword compatibility traced. Actual vertical-separation driver passed all gates after current periodic corrections."
+resources = "Bounded explicit spatial/spectral orders and analysis meshes; no file descriptors or persistent mutable scratch introduced. Multi-height dense sheet study not executed here."
+performance = "No new warmed grounded-assembly benchmark. Independent spectral driver uses at most121-squared reference orders and ran in a small single-thread process."
+
+[[review_group]]
+files = ["validation/paper/run_beam_steering_case.jl", "validation/paper/run_convergence_study.jl", "validation/paper/generate_consistency_report.jl", "validation/scaling/run_cost_scaling.jl", "validation/scaling/run_hotpath_resources.jl", "validation/robustness/run_robustness_sweep.jl", "validation/consistency/generate_consistency_report.jl"]
+domain = "Reactive/resistive impedance signs, ratio-objective adjoints, finite-difference parameters, physical retained-design mapping, vector energy ratios and numerical report gates reviewed. Two report false-positive boundaries confirmed and fixed."
+implementation = "Saved triangle-order/centroid contract, frequency/angle changes, public optimizer/results APIs, include/main guards and report field/CSV mappings read. Five synthetic artifact-pipeline checks cover valid, excess-energy and empty-external-population reports."
+resources = "Bounded fixed meshes/frequency cases; large beam/robustness studies deliberately not launched. Output files are owned by the explicit drivers. Report tests use mktempdir cleanup and no real data directory."
+performance = "Hotpath driver warms twice and reports minimum latency/allocation samples separately from RSS/native allocations. Cost scaling reports raw timings and monotonicity, which remain hardware/noise-dependent; no universal optimization inference."
+
+[[review_group]]
+files = ["validation/po/validate_po_vs_pofacets.jl", "validation/po/generate_julia_po_aircraft.jl", "validation/po/compare_geometries.m", "validation/po/compare_po_aircraft.m"]
+domain = "Source direction versus propagation, theta/phi polarizations, PEC grazing limit, triangle phase integrals, RCS units and mesh orientation comparison reviewed. MATLAB comparison is explicitly diagnostic with no acceptance threshold."
+implementation = "Julia transliteration uses299792458m/s; external MATLAB/POFacets comparison uses its3e8 convention, a bounded model difference rather than an exact equality claim. External geometry/installation inputs fail explicitly when missing."
+resources = "MATLAB OBJ reader has onCleanup fclose; finite/index/winding checks precede comparison. No MATLAB/Octave command found, POFacets environment unconfigured and default aircraft OBJ absent, so these optional studies were not executed."
+performance = "Read analytical facet implementation and bounded360-look observation grid; no new full-aircraft timing or memory claim. Immutable captured reference snapshots were not counted as active code."
+
+[[review_group]]
+files = ["examples/planar_microstrip_thru.jl", "examples/planar_patch.jl", "examples/planar_spiral.jl", "examples/planar_stripline_benchmark.jl", "examples/04_pec_sphere_mie.jl", "examples/05_solver_methods.jl", "examples/08_solve_scattering_workflow.jl", "examples/09_mom_vs_po.jl", "examples/21_grounded_rcs_demo.jl", "examples/21_near_total_field_rayleigh_sphere.jl", "examples/22_po_ptd_comparison.jl", "examples/23_circular_plate_ptd.jl", "examples/grounded_rcs/framework_pixel_design.jl"]
+domain = "Line characteristic extraction, box boundary assumptions, Mie/Rayleigh approximations, solver residual versus compression/mesh error, grounded reflection normalization and PO/PTD finite-RMS gates reviewed. Example09 azimuth/data-label mismatch confirmed and fixed."
+implementation = "Current constructor, solve, sweep, preconditioner, retained-result, near/far and plotting API calls traced. All13 Julia files parsed; bounded cross-path probes exercise representative planar, conformal, conditioning, Mie and retained APIs."
+resources = "Examples retain deliberate fixed larger problem sizes and optional plot outputs; full expensive optimization/plot runs were not executed. Independent check evaluates Example09's exact grid-construction block without launching its dense solve or renderer."
+performance = "Example09 now computes180 requested cut looks instead of2664 mixed-azimuth looks, reducing this radiation payload/work by14.8x. No whole-example wall-time speedup measured or claimed."
+
+[[finding]]
+candidate = "Paper consistency report can certify excess energy and zero external cases"
+verification = "Before, actual consistency_checks returned all ten checks true for energy ratio2.0 and beam_matrix_num_cases0. A valid minimum0.99 could also hide another mesh ratio2.0. Log TEMP/diffmom-consistency-false-pass-before.log."
+fix = "Compute/report maximum absolute energy-ratio error with the same0.02 gate as the convergence runner; require at least one beam case, including the final matrix-status line. Preserve the existing minimum metric."
+reverify = "test_validation_consistency_gates.jl5 public synthetic-CSV pipeline checks passed,7.1s including DataFrames/join compilation. No large paper studies executed."
+
+[[finding]]
+candidate = "Example09 plots all azimuths as a one-degree phi0 cut"
+verification = "Before, make_sph_grid(37,72) gave2664 points spanning72 azimuths and theta spacing180/37deg; sorting only theta mixed those planes under a phi0,one-degree title."
+fix = "Construct the stated180-look phi0 cut before PO and radiation evaluation."
+reverify = "Actual grid source block checked for180 samples,phi0,one-degree spacing,unit directions andzero y; all five checks passed. No rendering engine run."
+
+[evidence]
+source_syntax_and_grid_log = "TEMP/diffmom-physics-driver-final-checks.log"
+source_syntax_and_grid_checks = 32
+source_syntax_and_grid_seconds = 0.8
+source_syntax_and_grid_peak_rss_bytes = 381476864
+consistency_crc_log = "TEMP/diffmom-consistency-gates-crc.log"
+consistency_crc_checks = 5
+vertical_ewald_log = "TEMP/diffmom-grounded-vertical-final.log"
+vertical_ewald_max_splitting_error = 3.910e-15
+vertical_ewald_max_spectral_error = 7.426e-15
+independent_physical_invariant_log = "TEMP/diffmom-final-scientific-invariants.log"
+independent_physical_invariant_checks = 38
+independent_physical_invariant_seconds = 42.8
+independent_physical_invariant_peak_rss_bytes = 738770944
+independent_invariants = ["PEC/PMC folded dense/FFT/UFFT equality, reciprocal admittance and passive S", "Two material/thickness adjoints versus independent central differences", "Conformal uniform-area and original dense/lattice equations plus port permutation", "Proper-complex Gaussian posterior under unitary observation rotation", "Mie angular covariance, matched-medium zero and PEC boundary", "Retained multiple-RHS/adjoint physical residual and rejected-budget transaction"]
+
+[[discarded_candidate]]
+candidate = "Default Mie boundary residual exceeds1e-13"
+verification = "Default order10 atka1.541 produces2.71686635e-9 residual, bounded by independently evaluated omitted Jacobi-Anger tail2.89484467e-9. Requested order32 gives7.36042216e-17. Initial overstrict oracle was corrected using the actual truncation contract; no production change. TEMP/diffmom-mie-boundary-oracle-qualification.log."
+
+[[transferred_finding]]
+candidate = "Saturated vertical Floquet denominator overflows before finite division"
+verification = "Explicit valid0-order PeriodicLattice(1,1,0,0,1e308,1e308,0,0),separation1e308 had98.76percent relative error versus4352-bit truncated Ewald equation. TEMP/diffmom-periodic-saturated-denominator-before.log."
+owner = "core_scattering"
+status = "Core applied(selected/(2im))/kz and added the public case to test_assembly_range_reductions.jl; parent current CRC/CI supplies final evidence."
+
+[remaining]
+ci = "Parent owns final main push and GitHub focused/full validation. Local bounded evidence is not a final remote pass claim."
+optional = "No MATLAB, POFacets, aircraft corpus, full paper optimization, large PEC/DDA-Mie studies or plotting renderer executed during this closure. API/source review is distinguished from runtime evidence."
+examples_outside_scope = "Remaining periodic optimization, aircraft/MLFMA/mesh examples are assigned to parent/core; they are not counted complete here."

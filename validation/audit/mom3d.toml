@@ -12,7 +12,7 @@ body_review = "Complete fresh body reads of all five root-owned files, including
 domain = "Traced Cartesian center/volume consistency, exp(+iwt) passive loss, exact small-matrix PSD Schur pivots, Drude/Lorentz/Debye frequency units and resonance differences, normalized electric/magnetic fields, real-design adjoint factor two and Toeplitz self-exclusion."
 implementation = "Constructor compatibility, input/model coercion, finite results, scalar-gradient restriction, reused forward factors, public indexing, FFT alias copies, shared workspace locks and finally cleanup reviewed."
 resources = "Voxel raw storage/count limits, FFT persistent/scratch estimates, matrix-free fallback, stored model ownership, output limits, dense LU/exact fallback work, reused per-call MPFR scratch, alias copies and finally/unlock paths traced. Whole-field coherent retries use an adaptive dyadic accumulator with a retained-byte limit."
-performance = "Fresh expanded hotpath runner measures DDA 8/64 voxels and VIE/FFT paths. Wideband normal-path allocation regression is being checked; no global optimization claim."
+performance = "Fresh expanded hotpath runner measures DDA 8/64 voxels and VIE/FFT paths. Normal Wideband Debye now allocates zero bytes; FFT plans are reused with zero warmed matvec allocations at 8/64 voxels. No global optimization claim."
 verification = "New material13 + original material78 checks passed. New FFT24 + original FFT92 checks passed. New coherent/Huygens18 checks, original DDA364, EM257 and adjoint30 passed; EM257 and FFT92 repeated after final EM boundary fix. Peak for the mixed DDA/EM/adjoint process 1984925696 bytes, final EM/FFT process 1788088320 bytes; these include compiler state. Four-thread SIE and 480-RWG integration independently passed. Complete reference validation on pushed source pending."
 
 [[finding]]
@@ -68,3 +68,13 @@ current_seconds = 4.452e-8
 baseline_allocated_bytes = 576
 current_allocated_bytes = 0
 protocol = "same-process protocol above; ordinary dynamic error-label allocation removed; cold fallback retains bounded precision"
+
+[[finding]]
+candidate = "Every normal FFT matvec reconstructs forward and inverse FFTW plans."
+dimension = "performance and memory"
+verification = "Profile.Allocs attributed all 2304 DDA and 4608 EM-DDA warmed per-call bytes to FFTW plan construction/dimension metadata. Repeated at 8 and 64 voxels with one Julia/BLAS thread."
+status = "fixed and locally CRC-verified; package-wide quality and GitHub validation pending"
+fix = "Operators retain concretely typed ESTIMATE plans; one batched transform covers the spatial dimensions of every source channel. Existing workspace locks protect execution. Original public constructor forms remain available. No extra voxel-sized array is retained."
+reverify = "New plan reuse20, scaled source24 and original four-thread FFT100 checks passed, including aliased input/output, nonzero beta, range fallbacks, custom operator constructors and concurrent reuse; peak RSS1060007936 bytes. TEMP/diffmom-reset-fft-plan-crc.log"
+measurement = "8 voxels: DDA61.733 to1.916 microseconds, 2304 to0 bytes; EM132.813 to6.626 microseconds,4608 to0 bytes. 64 voxels: DDA94.811 to18.744 microseconds,2304 to0 bytes; EM194.117 to46.367 microseconds,4608 to0 bytes. Minimum of five samples,100 warmed iterations each. TEMP before/after logs label the time ns incorrectly; the recorded formula yields microseconds and the values here use the correct units. Timing is local CPU latency, not a cross-platform guarantee."
+resources = "Plan/native metadata are additional persistent construction resources; max_storage_bytes continues to describe documented persistent array payload, not FFTW/native memory or whole-process RSS. ESTIMATE avoids timing-based planning or destruction of initial buffers."

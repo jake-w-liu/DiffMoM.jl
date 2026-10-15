@@ -37,7 +37,13 @@ println("Plate: $(round(Lx/λ0, digits=1))λ × $(round(Ly/λ0, digits=1))λ, $N
 pw = make_plane_wave(Vec3(0.0, 0.0, -k), 1.0, Vec3(1.0, 0.0, 0.0))
 
 # Far-field grid for plate
-grid_plate = make_sph_grid(37, 72)
+# Sample the plotted azimuth plane directly, with one-degree theta spacing.
+theta_cut = (collect(1:180) .- 0.5) .* (π / 180)
+rhat_cut = zeros(3, length(theta_cut))
+rhat_cut[1, :] .= sin.(theta_cut)
+rhat_cut[3, :] .= cos.(theta_cut)
+grid_plate = SphGrid(rhat_cut, theta_cut, zeros(length(theta_cut)),
+    sin.(theta_cut) .* (2π * π / 180))
 NΩ_plate = length(grid_plate.w)
 
 # PO

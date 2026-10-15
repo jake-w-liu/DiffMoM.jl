@@ -1,13 +1,13 @@
 audit_date = "2026-10-15"
 base_revision = "dd2f0eb4df088a25b95e7ee2b97fe52454d1fcc6"
-status = "fresh audit in progress; seven confirmed fixes locally verified; 33 of 37 owned source bodies freshly read, 4 explicitly partial; global full validation pending"
+status = "all 37 owned source bodies and 39 active companion bodies freshly read; final independent public/external-runner pass complete; local fixes verified; root global full validation pending"
 whole_surface_complete = false
 whole_repository_bug_free_claim = false
 global_optimization_claim = false
 julia = "1.13.1"
 julia_threads = 1
 blas_threads = 1
-pending = ["Complete 4 explicitly marked source-body gaps", "Root's serial full reference validation on stable final source", "Independent native SBOX interference oracle for diagonal GEOVAR candidate", "Representative native/project performance measurements before any optimization claim"]
+pending = ["Root's full reference validation on stable final source", "Broad native/vendor and license-blocked physics oracles are outside current bounded execution evidence; no global physics/optimization claim"]
 
 owned_files = [
   "src/planar/PlanarArtworkCertified.jl", "src/planar/PlanarArtworkExact.jl",
@@ -52,20 +52,20 @@ delegated_support = "Core agent owns 10 support files; root owns Library, Connec
 "PlanarSpiceIO.jl" = "complete fresh body read; provenance/name ownership bug fixed; 9127 adjacent checks passed"
 "PlanarSpiceLines.jl" = "complete fresh body read; W PSD scale bug fixed; 7301 adjacent checks passed"
 "PlanarSpiceCoupling.jl" = "complete fresh body read; fresh full coupled-SPICE tests passed"
-"PlanarVectorFit.jl" = "partial: fit/eval/passivity/certificate/export complete; exact KYP/GMP internals pending full fresh read"
+"PlanarVectorFit.jl" = "complete fresh body read; fit/evaluation/passivity/export plus exact dyadic GMP Bareiss PSD/storage, Hamiltonian witness and certification resource flows traced; final 1036-check CRC passed"
 "PlanarArtworkCertified.jl" = "complete fresh body read; outward interval enclosure, trit dispatch, root event/stroke certification and exact fallback traced; fresh artwork corpus passed"
 "PlanarArtworkExact.jl" = "complete fresh body read; exact quadratic field/sign, event witnesses, rational separators, periodic pad/thermal queries and resource preflight traced; fresh artwork corpus passed"
 "PlanarArtworkIO.jl" = "complete fresh body read; ordered masks/lowering and aliases traced; fresh artwork corpus passed"
 "PlanarArtworkSweep.jl" = "complete fresh body read; stroke boundary/depth/resource flows traced; fresh artwork corpus passed"
 "PlanarGerberIO.jl" = "complete fresh body read; macro/aperture, image/coordinate transforms, modal state, regions, blocks/repeats and emit ownership traced; fresh full Gerber corpus passed"
 "PlanarLayoutIO.jl" = "complete fresh body read; GDS/DXF hierarchy, transforms, curve/path and material/via lowering traced; fresh full layout file tests passed"
-"PlanarODBFonts.jl" = "complete fresh body read; font insertion, dynamic/deferred context, barcode grammar/encoding/render/resource flows traced; Full ASCII literal shift bug fixed, 399 adjacent checks passed"
-"PlanarODBIO.jl" = "partial: public reader/hierarchy/state paths reviewed; complete dispatch body closure pending"
+"PlanarODBFonts.jl" = "complete fresh body read; font insertion, dynamic/deferred context, barcode grammar/encoding/render/resource flows traced; Full ASCII shift and geometry budget bugs fixed, latest 1149 adjacent checks passed"
+"PlanarODBIO.jl" = "complete fresh body read; snapshots, UTF-8 contour pre-count, state/lookup/feature dispatch, symbol/font callbacks, product hierarchy and aggregate retained budgets traced; barcode geometry/context budget fixed; 1149 adjacent checks passed"
 "PlanarODBSymbolsExtra.jl" = "complete fresh body read; periodic pads/thermals, stencil fillet/annulus/symbol dispatch and boundary work windows traced; fresh full symbol/predicate corpus passed"
-"PlanarSonnetIO.jl" = "partial: public parse/stage/solve/ownership paths reviewed; remaining large native bodies pending"
+"PlanarSonnetIO.jl" = "complete fresh body read; intake/scalar/circuit/material, thick/volume/endpoint geometry, CUP/DRP source/calibration/solve/current paths traced; CUP-only staging, sheet-local marginal and NOR thin-film recovery fixed; 1149 adjacent checks passed"
 "PlanarSonnetScalarFiles.jl" = "complete fresh body read; lexer/CSV interpolation/snapshot/root/ownership paths traced; full scalar files corpus execution pending"
-"PlanarSonnetGeometryVariables.jl" = "complete fresh body read; dependency/anchor/radial/symmetric/port/resource flows traced; diagonal SBOX candidate needs actual native oracle"
-"PlanarSonnetTechnology.jl" = "partial: physical technology dispatch reviewed; full body closure pending"
+"PlanarSonnetGeometryVariables.jl" = "complete fresh body read; dependency/anchor/radial/symmetric/port/resource flows traced; diagonal SBOX candidate discarded with actual native reject and successful farther-away control"
+"PlanarSonnetTechnology.jl" = "complete fresh body read; XML/XSD C resource ownership, literal/unit/material/table, public inheritance/materialization and provenance flows traced; optional reference candidate discarded against actual native parser"
 "PlanarSonnetModelFiles.jl" = "complete fresh body read; snapshot/binding/canonical identity/root/transaction flows traced; full native SPARAM test file passed 271 checks"
 "PlanarSonnetProjectFiles.jl" = "complete fresh body read; snapshots/DEF/PRJ/geometry child/task-owned recursion traced; full SPROJ file passed 160 checks"
 "PlanarSonnetRasterResources.jl" = "complete fresh body read; masks/metadata/basis/retained solve limits traced; tuple retained-result budget and original normal calibration regressions passed"
@@ -95,7 +95,7 @@ evidence = "Full test_planar_spice, spice_coupled, spice_lines, spectre, spice_r
 id = "rational_models"
 files = ["PlanarVectorFit.jl"]
 domain = "Fresh full fit, exact evaluation, IEEE rounding, passivity, certificate, conjugate-pole and exported SPICE comparisons passed."
-implementation = "Fit/evaluation/passivity/certificate/export paths traced; exact KYP/GMP internals still need complete fresh body review."
+implementation = "All bodies freshly read, including exact dyadic GMP storage/PSD elimination, Hamiltonian storage witness, fit/evaluation/passivity/certificate/export flows."
 resources = "Confirmed and fixed frequency arrays allocated before rejection and n_passivity grid omitted from cap. Internal exact evaluation, certificate, repair and error reporting now use remaining fit budget."
 performance = "Before fix: rejection grew 34172 to 2106595 allocated bytes at 1024 to 65536 samples. Corrected 64/4096 sample rejection stays below 16384 bytes; normal evaluation allocation tests pass."
 evidence = "Fresh rational/exact group: 14 files, 1697 assertions. Final phase CRC: 12 files, 1036 assertions, including 11 new preflight checks; logs under %TEMP%/diffmom-fresh-vectorfit.log and diffmom-fresh-fit-phase-crc.log."
@@ -104,7 +104,7 @@ evidence = "Fresh rational/exact group: 14 files, 1697 assertions. Final phase C
 id = "artwork_layout_files"
 files = ["PlanarArtworkAffine.jl", "PlanarArtworkBounds.jl", "PlanarArtworkCertified.jl", "PlanarArtworkExact.jl", "PlanarArtworkIO.jl", "PlanarArtworkLinearExact.jl", "PlanarArtworkRegionExact.jl", "PlanarArtworkSweep.jl", "PlanarGerberIO.jl", "PlanarLayoutIO.jl", "PlanarODBCompression.jl", "PlanarODBFonts.jl", "PlanarODBIO.jl", "PlanarODBLayers.jl", "PlanarODBSymbolsExtra.jl"]
 domain = "Fresh complete existing Gerber/ODB/layout file tests cover analytic membership, ordered polarity, independent boundary/ray/native data, units, transforms, holes/islands, font and compressed transport."
-implementation = "All owned artwork bodies except ODBIO freshly read end-to-end, including certified/quadratic exact/stencil arithmetic and Gerber dispatch. Full ASCII barcode shift literals fixed; remaining ODB reader body closure pending."
+implementation = "All owned artwork bodies freshly read end-to-end, including certified/quadratic exact/stencil arithmetic, ODB hierarchy/aggregate accounting and Gerber dispatch. Full ASCII barcode shift literals and barcode geometry preflight fixed."
 resources = "Input/decompression/archive/curve/shape/stroke bounds and scoped temporary cleanup traced; all original resource tests in the artwork group passed."
 performance = "Current large generated predicate suites ran bounded; observed intermediate group peak 805588992 bytes (not a complete process-peak measurement). No unmeasured optimization claim."
 evidence = "Fresh artwork plus fit CRC group: 29 files, 590826 assertions; %TEMP%/diffmom-fresh-artwork.log."
@@ -113,7 +113,7 @@ evidence = "Fresh artwork plus fit CRC group: 29 files, 590826 assertions; %TEMP
 id = "native_sonnet"
 files = ["PlanarSonnetIO.jl", "PlanarSonnetScalarFiles.jl", "PlanarSonnetGeometryVariables.jl", "PlanarSonnetTechnology.jl", "PlanarSonnetModelFiles.jl", "PlanarSonnetProjectFiles.jl", "PlanarSonnetRasterResources.jl", "PlanarSonnetConformal.jl", "PlanarSonnetComponents.jl", "PlanarSonnetFloating.jl"]
 domain = "Fresh public contracts, source identity, R/X/L/C units, variable/technology and balanced source flow inspected against current retained native test definitions; full current-run native corpus execution pending root's serial validation."
-implementation = "Complete fresh bodies of eight native support files read; SonnetIO and Technology remain partial. Full model/project/FLOAT files freshly executed."
+implementation = "Complete fresh bodies of all ten native files read. Full model/project/FLOAT files freshly executed; CUP sheet ownership/source-free staging and NOR tiny thin-film recovery fixed."
 resources = "Task-owned recursion, canonical bindings, snapshot alias checks, retained solves and staging budgets traced. Confirmed FLOAT geometry and FIX-pin retained-result reservations fixed with shared alias-aware counters."
 performance = "Focused FLOAT counter test cold 1.6 seconds after removing full staging. Full-only public FIX-pin CRC cold 79.5 seconds; same-process warm repeat 0.116 seconds. No parser throughput/global optimization claim."
 evidence = "Native SPARAM 271 and SPROJ 160 checks passed; latest FLOAT/helper/ordinary calibration CRC 200 checks. Bounded successful FIX-pin probe showed parent retained EM 16272 bytes omitted from a 2097152-byte forwarded phase cap; peak process RSS 1173204992 bytes."
@@ -194,9 +194,67 @@ fix = "Keep the basic Code39 pass-through behavior, but send the four shift lite
 reverify = "New compact 12-check direct and public-render regression plus entire vendor records, fonts and legacy units files: 4 files, 399 assertions passed. Focused test cold 4.5 seconds including compilation; no scientific solve."
 
 [[candidates]]
+id = "cup_marginal_sheet_ownership"
+dimension = "domain and implementation"
+status = "confirmed_fixed_crc_passed"
+verification = "Accepted public sonnet_planar_problem model with lower west CUP launch, upper east CUP launch and an ordinary wall source: lower launch xy lies under upper pad copper, with both physical returns and separate contacts clear to the lower cover. First marginal deleted five cells from both sheets; only its lower-sheet launch should be removed."
+fix = "Scope claimed launch cells and marginal removal by terminal sheet index; retain conservative global contact exclusion and return-column avoidance."
+reverify = "New public model geometry regression checks exact five-cell removed sets and unrelated-sheet equality; current 8-file adjacent CRC passed 1149 checks."
+
+[[candidates]]
+id = "cup_only_source_free_staging"
+dimension = "implementation and completeness"
+status = "confirmed_fixed_crc_passed"
+verification = "The same two valid BOX-return CUP ports without an unrelated wall source threw 'at least one port is required' before their generated return sources could attach."
+fix = "Construct and validate the genuinely port-free intermediate geometry whenever CUP terminals are waiting to attach, using the existing source-free constructor path."
+reverify = "New 8-check CUP regression stages both physical source paths without a dummy source and verifies group and label contracts; current 8-file adjacent CRC passed 1149 checks. Public128-basis solve at mx=my16 passed finite-S and reciprocity checks; cold39.500s. Same-process model-only regression repeat0.168s."
+
+[[candidates]]
+id = "nor_vanished_propagation_finite_dc"
+dimension = "domain and numerical robustness"
+status = "confirmed_fixed_crc_passed"
+verification = "Public sonnet_metal_zs at frequency=thickness=nextfloat(0), conductivity1e308 threw even though independent BigFloat DC resistance is2.0240225330731062e15. Propagation x vanished, or inv(x) overflowed, before a finite sheet impedance could form."
+fix = "Keep the ordinary native formula; recover exceptional x/nonfinite results through the existing balanced open-slab evaluator with permeability multiplier k^2. Algebraically this is exactly k*Zskin*coth(k*gamma*t)."
+reverify = "New 6-check regression covers two tiny frequencies, cover/two-face cases and an independent512-bit normal RF formula. Full volume-material624 and SUP145 checks also passed; whole current group1149 checks."
+
+[[candidates]]
+id = "odb_barcode_geometry_preflight"
+dimension = "resources"
+status = "confirmed_fixed_crc_passed"
+verification = "Warmed public1024-character barcode at max_bytes7360 allocated10167853 bytes before rejecting745054 bytes of retained geometry. Private remaining-budget helper accepted max_bytes1 and returned738848-byte geometry. Rectangle expansion preceded the only retained-object limit."
+fix = "Preflight conservative barcode rectangle/wrapper/composition/scratch storage before expansion; retain that reservation while optional font text builds; subtract owned dynamic context at the reader call boundary."
+reverify = "New6-check direct/public budget and sufficient-budget geometry regression. Reprobe public allocation28144 bytes (was10167853), helper4704 bytes (was6295187); 8-file adjacent CRC1149 checks passed."
+
+[[candidates]]
+id = "native_runner_captured_input_hash"
+dimension = "implementation and provenance"
+status = "confirmed_fixed_crc_passed"
+verification = "Controlled TEMP external process mutates the original source after its copy is executed. reference_run returned metadata source_sha256 that did not match captured executed source, because it hashed original after subprocess completion."
+fix = "Snapshot/hash copied source before launching; derive BOX metadata from that snapshot, and hash copied dependency targets. Source origin path remains retained."
+reverify = "New4-check external-runner regression verifies changed original, unchanged captured script, exact captured source hash and dependency hash. Passed0.8s; metadata probe uses a stand-in subprocess, not synthetic physics evidence."
+
+[[candidates]]
+id = "scaled_mixed_missing_reference_inputs"
+dimension = "error boundaries and validation completeness"
+status = "confirmed_fixed_crc_passed"
+verification = "Unchanged active runner replayed against a TEMP manifest declaring S_EQUIVALENT but no source files exited0 and emitted PARAMETER-ONLY with zero matrices. No external engine was called."
+fix = "Require parameter source for every row and literal source for expected pairs; preserve explicitly REJECTED/unresolved parameter-only class. Includeable helper uses an ordinary executable-script entry guard."
+reverify = "Same empty-fixture replay exits1 with missing native parameter fixture. New4-check helper regression covers missing parameter, missing literal, allowed unresolved parameter-only and complete pair; passed0.2s. Both auxiliary files together8checks passed."
+
+[[candidates]]
+id = "sonnet_case_and_unclosed_polygon"
+status = "discarded_native_verification"
+verification = "Actual Lite18.53 ReadWrite rejects lower-case nor and unclosed polygon vertices; the closed upper-case baseline succeeds. Lower-case lng UM is accepted but ignored: native output defaults to LNG MIL, so accepting syntax is not evidence it preserved the specified units. No unsupported case-normalization or closing-edge change made. TEMP variants and outputs under diffmom-sonnet-parser-ze_vj62j."
+
+[[candidates]]
+id = "stf_optional_model_mesh_references"
+status = "discarded_native_verification"
+verification = "Official retained matl-1.4.xsd permits omitted model/mesh references, but actual Sonnet Lite18.53 -LoadTechnology rejects missing metal model, missing metal mesh and missing via model; missing via mesh crashes native exit3221225477. Unchanged rich.son/rich.stf control succeeds. Current explicit importer rejection therefore does not violate native materialization compatibility. TEMP probe and six outputs under diffmom-stf-optional-phm6h_tk."
+
+[[candidates]]
 id = "geovar_diagonal_sbox_interference"
-status = "pending_native_oracle"
-verification = "Fresh body review: the moved-edge/SBOX check uses only axis-aligned bounding intervals; a diagonal segment can have an overlapping AABB while staying outside the open rectangle. Native renderer may deliberately apply the same conservative rule, so this is not a confirmed compatibility defect without actual engine or retained native evidence."
+status = "discarded_native_verification"
+verification = "A moved triangle has an edge whose AABB overlaps SBOX while the geometric segment remains outside the open rectangle. Actual18.53-Lite em rejects component interference too. Same native source/GEOVAR with triangle moved farther away succeeds:48subsections,1MB,0.025s. A strict exact-segment replacement would wrongly accept this measured native rejection. TEMP sources/logs under diffmom-sbox-native-8j4vm_y1; no production change."
 
 [[candidates]]
 id = "artwork_scoped_mpfr_precision"
@@ -212,3 +270,78 @@ verification = "Exposure appears permissive at branch entry but a shared post-pr
 id = "full_worker_shared_helpers"
 status = "confirmed_fixed_by_root_static_reverified"
 verification = "Fresh workers split synthetic SMD/FLOAT factory and retained SPICE wave helpers from consumers. Root extracted three exact helper bodies; all consumers now include them, and original 253 include order is preserved."
+
+[[candidates]]
+id = "public_power_reactive_scratch_boundary"
+dimension = "resources and test oracle"
+status = "discarded_production_bug_test_corrected_crc_passed"
+verification = "Root full shard5 on cbf58e reported one failed required-minus-one assertion. Tiny independent probe confirms fixture1 has no real-coordinate products and needs no MPFR scratch despite BLAS dot=NaN. Five owned ComplexF64 vectors plus Float64 roots occupy176 bytes for two ports; documented conservative six-ComplexF64-vector reservation is192 bytes. Budget192 passes,191 rejects. Real overflow/cancellation fixtures2/3/4 independently require2496/2592/2400 bytes: each exact budget passes and one less rejects. Four simultaneous scalar objects independently measured576 bytes each via Base.summarysize at4198/4199-bit precision, matching helper counts."
+fix = "Test-only: select known recovery fixtures2/3/4 rather than infer scratch from BLAS dot finiteness; independently derive vector/scalar bytes and check retained-minus-one rejection for every fixture. No production guard or resource bound changed."
+reverify = "Corrected public power62, adjacent radiation power product15 and finite accepted power15 checks passed:92 total, one bounded Julia process PID24716, single Julia/BLAS thread and512MiB heap hint."
+
+[[candidates]]
+id = "meep_preserved_table_missing_evidence_and_fill"
+dimension = "validation completeness and domain labels"
+status = "confirmed_fixed_crc_passed"
+verification = "TEMP copy of unchanged regen_mom_reference_table with controlled .25 solve and one external PEC row ran five stand-in solves, exited0 and overwrote four missing external R_MEEP values with NaN. Actual physical-scale wx.4/wy.2 mask has184metal cells/196=93.87755102040816%, while script reported nominal92%. Captured ../paper/data/results_meep_validation.csv is absent here and was never created or edited."
+fix = "Validate complete unambiguous finite measured cases before first solve/write, use measured values unchanged, calculate fill from exact same pixel-mask parameters, reject nonfinite computed rows before opening the original output. Script entry guard permits TEMP-only contract testing."
+reverify = "New full-only test_meep_reference_table_contract18checks passed4.8s (whole bounded process7.6s). Missing/duplicate/NaN/Inf/missing-value/text evidence rejects without any solve and preserves input bytes; invalid computed result preserves input; complete five-case output retains exact supplied measurements and184/196 fill. No physical or external solver rerun."
+
+[companion_review]
+status = "complete fresh body read of all 38 assigned Sonnet/planar drivers plus newly assigned Meep table driver; no full external corpus rerun"
+files = [
+  "validation/sonnet_stripline/inspect_sonnet_complex_variables.jl",
+  "validation/sonnet_stripline/library_idc_fixture.jl",
+  "validation/sonnet_stripline/library_mim_fixture.jl",
+  "validation/sonnet_stripline/solver_spiral_fixture.jl",
+  "validation/sonnet_stripline/sonnet_reference.jl",
+  "validation/sonnet_stripline/validate_solver_spiral_native.jl",
+  "validation/sonnet_stripline/validate_sonnet_abs_resonance.jl",
+  "validation/sonnet_stripline/validate_sonnet_artwork_coupon.jl",
+  "validation/sonnet_stripline/validate_sonnet_library_idc.jl",
+  "validation/sonnet_stripline/validate_sonnet_library_mim.jl",
+  "validation/sonnet_stripline/validate_sonnet_odb_composite_stroke.jl",
+  "validation/sonnet_stripline/validate_sonnet_odb_concave_stroke.jl",
+  "validation/sonnet_stripline/validate_sonnet_odb_dpack.jl",
+  "validation/sonnet_stripline/validate_sonnet_stripline.jl",
+  "validation/planar_audit/abs_resonant_ladder_audit.jl",
+  "validation/planar_audit/artwork_allocations.jl",
+  "validation/planar_audit/artwork_extended_allocations.jl",
+  "validation/planar_audit/artwork_general_composite_allocations.jl",
+  "validation/planar_audit/gerber_legacy_allocations.jl",
+  "validation/planar_audit/layout_modal_derivative.jl",
+  "validation/planar_audit/odb_compression_fixture.jl",
+  "validation/planar_audit/odb_extra_symbol_allocation_equivalence.jl",
+  "validation/planar_audit/rfic_library.jl",
+  "validation/planar_audit/run_box_port_extent_reference.jl",
+  "validation/planar_audit/run_conformal_clipping_reference.jl",
+  "validation/planar_audit/run_folded_ufft_resource_audit.jl",
+  "validation/planar_audit/run_geovar_multiplicity_reference.jl",
+  "validation/planar_audit/run_geovar_reference_count_law.jl",
+  "validation/planar_audit/run_geovar_reference_variants_reference.jl",
+  "validation/planar_audit/run_internal_port_attachment_reference.jl",
+  "validation/planar_audit/run_port_attachment_reference.jl",
+  "validation/planar_audit/run_radial_adjustment_sequence.jl",
+  "validation/planar_audit/run_radial_geovar_reference.jl",
+  "validation/planar_audit/run_scaled_geovar_reference.jl",
+  "validation/planar_audit/run_scaled_mixed_reference.jl",
+  "validation/planar_audit/run_whole_geovar_reference.jl",
+  "validation/planar_audit/run_zero_nominal_geovar_reference.jl",
+  "validation/planar_audit/sweep_frequency_conversion_audit.jl",
+  "validation/meep/regen_mom_reference_table.jl",
+]
+excluded = "Nested captured source snapshots and reference-artifact producers are immutable historical evidence, not active current implementations; retained hashes/expected matrices were inspected through active replay entry points."
+domain = "Independent literal native GEO, RLC ABCD, original Galerkin RHS/power and exact membership oracles distinguished from empirical native parity and stored source identity. License-blocked linked-STF/TMM/native port configurations remain explicitly unverified."
+implementation = "Entry configuration, engine discovery, fresh copied inputs, explicit raw/calibrated selection, reference basis, frequency units, expected rejection paths and report failure propagation traced. Two verified provenance/input-error defects fixed."
+resources = "Scoped file handles/temporary archives and retained per-run evidence traced; heavy external runs are manual benchmarks without an aggregate process-RSS guarantee. No current broad native corpus replay claimed."
+performance = "Timing/allocation scripts distinguish cumulative Julia allocations from RSS and exclude opaque FFT/codec buffers. Native tiny SBOX control needed48subsections/1MB and0.025s; no global throughput claim."
+final_independent_pass = "After production fixes, retraced public inputs through scalar/physical lowering, compiled model ownership, network/circuit contraction, calibration/current outputs and error cleanup. Companion-runner route found the two auxiliary defects above; after those fixes the source/consumer/native rejection boundary pass found no additional confirmed defect."
+
+[independent_cross_review]
+scope = "Root's uncommitted Bempp/Meep runner, CI and shared-fixture changes; change review plus directly involved callers/validators, not a claim to all Bempp/Meep scientific bodies."
+files = ["validation/bempp/_bempp_common.py", "validation/bempp/run_pec_field_case.py", "validation/bempp/run_impedance_cross_validation.py", "validation/bempp/run_impedance_case_julia_reference.jl", "validation/meep/_meep_common.py", ".github/workflows/ci.yml", "validation/tests/test_pn_validation_contracts.py", "validation/tests/test_validation_reports.py", "test/helpers/dense_fft_workspace.jl", "test/helpers/filter_allocations.jl", "test/helpers/floating_project.jl", "test/helpers/native_raster_budget_error.jl"]
+domain = "Julia/Python nx/ny controls both reach their structured mesh constructors. Meep air-plane inequalities use actual max(requested thickness,one grid cell) slab. Pure runner evidence only; actual external solvers were not executed."
+implementation = "PEC parse and SHA derive from same captured input bytes; changed source origin cannot alter solved case hash. Finite/nested/duplicate JSON guards remain active. New CI job installs declared NumPy requirement then discovers all validation Python contracts. No additional confirmed defect in reviewed diff."
+resources = "Structured mesh uses per-call TemporaryDirectory; actual test checks two unique directories and their removal after controlled import exceptions. No source-checkout mesh artifacts remain."
+performance = "Independent Python27tests passed3.902s; bounded TEMP-only new table regression18checks passed4.8s. No external solver throughput or scientific comparison claimed."
+fixture_evidence = "Independent exact-source comparison confirms all seven function bodies extracted into four new helpers are byte-for-byte identical to HEAD providers. Lexical non-underscore global function/type/const cross-use scan covered284manifest/core files; only imported Base/LinearAlgebra and module-local capsule homonyms survived, with no confirmed missing shared global definition. This is a dependency scan, not a full execution proof; root full shards remain required."

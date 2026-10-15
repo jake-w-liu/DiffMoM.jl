@@ -242,8 +242,8 @@ function _odb_barcode_record(line)
         text=String(m[2]),suffix=something(m[3],""))
 end
 
-# Extended Code 39 shifts every character outside the 43-symbol basic set
-# into a two-character sequence from the basic set.
+# Extended Code 39 shifts non-basic characters and the four shift controls
+# into two-character sequences from the basic set.
 function _odb_code39_encode(text,full_ascii)
     out=IOBuffer()
     for char in text
@@ -283,6 +283,12 @@ function _odb_barcode_shape(font,record,unit,context;max_strokes,max_bytes)
     all(isfinite,(narrow,height)) && narrow>0 && height>0 || throw(ArgumentError("ODB barcode dimensions do not fit finite SI coordinates"))
     sequence='*'*encoded*'*'
     5*length(sequence)<=max_strokes || throw(ArgumentError("ODB barcode expansion exceeds max_objects"))
+    # Rectangles, primitive wrappers, both composition vectors and their
+    # construction scratch remain live before the reader can retain them.
+    barcode_payload=_checked_payload_sum("ODB barcode geometry",
+        _checked_array_payload_bytes(UInt8,512,5BigInt(length(sequence))+record.background),
+        _checked_array_payload_bytes(UInt8,3,ncodeunits(text)+ncodeunits(encoded)+ncodeunits(sequence)),512)
+    _enforce_payload_limit(barcode_payload,max_bytes,"ODB barcode geometry","max_bytes")
     parts=Tuple{Bool,_ArtworkShape}[]
     x=0.;bars_top=height
     for char in sequence
@@ -304,7 +310,7 @@ function _odb_barcode_shape(font,record,unit,context;max_strokes,max_bytes)
             x=0.,y=0.,positive=true,orientation=0,angle=0.,
             xsize=record.height,ysize=record.height,width_factor=1.,
             text=record.text,version=0),unit,context;
-            max_strokes=max_strokes-5*length(sequence),max_bytes)
+            max_strokes=max_strokes-5*length(sequence),max_bytes=max_bytes-barcode_payload)
         lx0,lx1,ly0,ly1=_artwork_bounds(label)
         dy=record.text_top ? bars_top+narrow-ly0 : -narrow-ly1
         label=_artwork_transform(label;origin=((width-(lx1-lx0))/2-lx0,dy))

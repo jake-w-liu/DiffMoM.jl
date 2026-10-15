@@ -472,11 +472,12 @@ function read_odb_features(path::AbstractString;layer::AbstractString=basename(d
                     bcode===nothing && throw(ArgumentError("invalid ODB barcode record"))
                     !surface || throw(ArgumentError("ODB barcode cannot be inside a surface record"))
                     font=bcode.add_string ? get_font(bcode.font) : nothing
+                    context=_odb_text_context(text_context,layer,bcode.x*unit,bcode.y*unit;
+                        max_bytes=available()-payload)
                     shape=_odb_barcode_shape(font,bcode,unit,
-                        _odb_text_context(text_context,layer,bcode.x*unit,bcode.y*unit;
-                            max_bytes=available()-payload);
+                        context;
                         max_strokes=max_objects,
-                        max_bytes=available()-payload-256-Base.summarysize(attributes))
+                        max_bytes=available()-payload-256-Base.summarysize(attributes)-Base.summarysize(context))
                     attributes["ODB.text.font"]=[bcode.font];attributes["ODB.text.source"]=[bcode.text]
                     attributes["ODB.barcode.symbology"]=["UPC39"]
                     emit(shape,bcode.positive,attributes);records+=1

@@ -39,8 +39,8 @@ def _matrix(raw, width, label, *, integer=False):
     return np.asarray(values, dtype=np.int64 if integer else np.float64)
 
 
-def read_case(path, max_dofs):
-    data = read_json_object(path)
+def read_case(path, max_dofs, *, content=None):
+    data = read_json_object(path, content=content)
     if data.get("schema_version") != 1 or data.get("convention") != "exp(+i*omega*t)":
         raise ValueError("unsupported PEC case schema or phasor convention")
     vertices = _matrix(data["vertices_m"], 3, "vertices_m")
@@ -84,7 +84,13 @@ def read_case(path, max_dofs):
 
 
 def solve_case(args):
-    case = read_case(args.input, args.max_dofs)
+    # Parsing and provenance use one snapshot. An external solve may run for
+    # hours while the user edits or regenerates the original input file.
+    input_bytes = args.input.read_bytes()
+    input_sha256 = hashlib.sha256(input_bytes).hexdigest()
+    driver_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    case = read_case(args.input, args.max_dofs, content=input_bytes.decode("utf-8"))
+    del input_bytes
     data, vertices, triangles, looks, wavevector, polarization, k, amplitude, theta, phi, reference = case
     bempp, lu = load_bempp()
     bempp.DEFAULT_DEVICE_INTERFACE = "numba"
@@ -146,8 +152,8 @@ def solve_case(args):
     passed = difference_norm <= tolerance
     report = {
         "schema_version": 1, "case_id": data["case_id"], "passed": passed,
-        "input_sha256": hashlib.sha256(args.input.read_bytes()).hexdigest(),
-        "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "input_sha256": input_sha256,
+        "driver_sha256": driver_sha256,
         "julia_source_sha256": data["julia_source_sha256"],
         "bempp_version": bempp.__version__, "device_interface": "numba", "dof_count": dofs,
         "python_version": sys.version,

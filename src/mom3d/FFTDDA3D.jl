@@ -38,7 +38,7 @@ FFT-accelerated coupled-dipole operator for a uniform `VoxelGrid3D`. It applies
 
 with the self interaction excluded, matching `DDAOperator3D`.
 """
-struct FFTDDAOperator3D{TEps<:AbstractVector,TAlpha<:AbstractVector} <: AbstractMatrix{ComplexF64}
+struct FFTDDAOperator3D{TEps<:AbstractVector,TAlpha<:AbstractVector,TPlans} <: AbstractMatrix{ComplexF64}
     grid::VoxelGrid3D
     k0::Float64
     eps_r::TEps
@@ -48,7 +48,36 @@ struct FFTDDAOperator3D{TEps<:AbstractVector,TAlpha<:AbstractVector} <: Abstract
     qhat::Array{ComplexF64,4}
     conv::Array{ComplexF64,3}
     work_lock::ReentrantLock
+    plans::TPlans
 end
+
+# Planning belongs to operator construction, not every iterative matvec. The
+# spatial dimensions transform all source channels as one batched FFT, and
+# ESTIMATE preserves the caller-supplied buffers during construction.
+function _fft_dda_plans_3d(qhat, conv)
+    return (forward=FFTW.plan_fft!(qhat, (1, 2, 3)),
+            inverse=FFTW.plan_ifft!(conv))
+end
+
+function FFTDDAOperator3D{TEps,TAlpha}(
+        grid::VoxelGrid3D, k0::Float64, eps_r::TEps, alpha::TAlpha,
+        radiative_correction::Bool, kernel::FFTDDAKernel3D,
+        qhat::Array{ComplexF64,4}, conv::Array{ComplexF64,3},
+        work_lock::ReentrantLock) where {TEps<:AbstractVector,TAlpha<:AbstractVector}
+    plans = _fft_dda_plans_3d(qhat, conv)
+    return FFTDDAOperator3D{TEps,TAlpha,typeof(plans)}(
+        grid, k0, eps_r, alpha, radiative_correction, kernel, qhat, conv,
+        work_lock, plans)
+end
+
+FFTDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
+                 eps_r::TEps, alpha::TAlpha, radiative_correction::Bool,
+                 kernel::FFTDDAKernel3D, qhat::Array{ComplexF64,4},
+                 conv::Array{ComplexF64,3}, work_lock::ReentrantLock) where
+                {TEps<:AbstractVector,TAlpha<:AbstractVector} =
+    FFTDDAOperator3D{TEps,TAlpha}(grid, k0, eps_r, alpha,
+                                 radiative_correction, kernel, qhat, conv,
+                                 work_lock)
 
 FFTDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
                  eps_r::TEps, alpha::TAlpha, radiative_correction::Bool,
@@ -88,7 +117,7 @@ FFT-accelerated coupled electric-magnetic DDA operator. It applies
 
 with the self interaction excluded, matching `EMDDAOperator3D`.
 """
-struct FFTEMDDAOperator3D{TAlpha<:AbstractVector} <: AbstractMatrix{ComplexF64}
+struct FFTEMDDAOperator3D{TAlpha<:AbstractVector,TPlans} <: AbstractMatrix{ComplexF64}
     grid::VoxelGrid3D
     k0::Float64
     alpha::TAlpha
@@ -98,7 +127,27 @@ struct FFTEMDDAOperator3D{TAlpha<:AbstractVector} <: AbstractMatrix{ComplexF64}
     conv::Array{ComplexF64,3}
     work_lock::ReentrantLock
     eta0::Float64
+    plans::TPlans
 end
+
+function FFTEMDDAOperator3D{TAlpha}(
+        grid::VoxelGrid3D, k0::Float64, alpha::TAlpha,
+        radiative_correction::Bool, kernel::FFTEMDDAKernel3D,
+        qhat::Array{ComplexF64,4}, conv::Array{ComplexF64,3},
+        work_lock::ReentrantLock, eta0::Float64) where {TAlpha<:AbstractVector}
+    plans = _fft_dda_plans_3d(qhat, conv)
+    return FFTEMDDAOperator3D{TAlpha,typeof(plans)}(
+        grid, k0, alpha, radiative_correction, kernel, qhat, conv,
+        work_lock, eta0, plans)
+end
+
+FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
+                   alpha::TAlpha, radiative_correction::Bool,
+                   kernel::FFTEMDDAKernel3D, qhat::Array{ComplexF64,4},
+                   conv::Array{ComplexF64,3}, work_lock::ReentrantLock,
+                   eta0::Float64) where {TAlpha<:AbstractVector} =
+    FFTEMDDAOperator3D{TAlpha}(grid, k0, alpha, radiative_correction,
+                               kernel, qhat, conv, work_lock, eta0)
 
 FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Real,
                    alpha::TAlpha, radiative_correction::Bool,
@@ -341,9 +390,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         end
 
         if !needs_direct_fallback
-            for b in 1:3
-                FFTW.fft!(view(qhat, :, :, :, b))
-            end
+            mul!(qhat, A.plans.forward, qhat)
 
             transformed_scale = _fft_array_component_scale_3d(qhat)
             needs_direct_fallback = !_fft_convolution_range_safe_3d(
@@ -367,7 +414,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             view(A.kernel.kernel_hat, :, :, :, a, b) .*
                             view(qhat, :, :, :, b)
                     end
-                    FFTW.ifft!(conv)
+                    mul!(conv, A.plans.inverse, conv)
                     idx = 0
                     for iz in 1:nz, iy in 1:ny, ix in 1:nx
                         idx += 1
@@ -393,7 +440,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                         view(A.kernel.kernel_hat, :, :, :, a, b) .*
                         view(qhat, :, :, :, b)
                 end
-                FFTW.ifft!(conv)
+                mul!(conv, A.plans.inverse, conv)
                 idx = 0
                 for iz in 1:nz, iy in 1:ny, ix in 1:nx
                     idx += 1
@@ -650,9 +697,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         end
 
         if !needs_direct_fallback
-            for b in 1:6
-                FFTW.fft!(view(qhat, :, :, :, b))
-            end
+            mul!(qhat, A.plans.forward, qhat)
 
             transformed_scale = _fft_array_component_scale_3d(qhat)
             needs_direct_fallback = !_fft_convolution_range_safe_3d(
@@ -672,7 +717,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             view(A.kernel.kernel_hat, :, :, :, a, b) .*
                             view(qhat, :, :, :, b)
                     end
-                    FFTW.ifft!(conv)
+                    mul!(conv, A.plans.inverse, conv)
                     idx = 0
                     for iz in 1:nz, iy in 1:ny, ix in 1:nx
                         idx += 1
@@ -698,7 +743,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                         view(A.kernel.kernel_hat, :, :, :, a, b) .*
                         view(qhat, :, :, :, b)
                 end
-                FFTW.ifft!(conv)
+                mul!(conv, A.plans.inverse, conv)
                 idx = 0
                 for iz in 1:nz, iy in 1:ny, ix in 1:nx
                     idx += 1

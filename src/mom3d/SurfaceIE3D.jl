@@ -1230,6 +1230,41 @@ Base.eltype(::MatrixFreeDielectricSIE3D) = ComplexF64
     end
 end
 
+@inline function _surface_sie_pairs_are_exact_3d(
+        pairs::NTuple{L,Tuple{ComplexF64,ComplexF64}},
+        value::ComplexF64, real_magnitude::Float64,
+        imag_magnitude::Float64) where {L}
+    error_factor = min(1.0, 16eps(Float64) * Float64(max(L, 1)))
+    check_real = _ieee_product_component_is_suspicious(
+        real(value), real_magnitude, error_factor)
+    check_imag = _ieee_product_component_is_suspicious(
+        imag(value), imag_magnitude, error_factor)
+    real_total = 0.0
+    imag_total = 0.0
+    @inbounds for (factor, primitive) in pairs
+        fr, fi = real(factor), imag(factor)
+        pr, pi = real(primitive), imag(primitive)
+        if check_real
+            real_total, exact = _ieee_add_product_with_exactness(
+                real_total, fr, pr, 1.0)
+            exact || return false
+            real_total, exact = _ieee_add_product_with_exactness(
+                real_total, fi, pi, -1.0)
+            exact || return false
+        end
+        if check_imag
+            imag_total, exact = _ieee_add_product_with_exactness(
+                imag_total, fr, pi, 1.0)
+            exact || return false
+            imag_total, exact = _ieee_add_product_with_exactness(
+                imag_total, fi, pr, 1.0)
+            exact || return false
+        end
+    end
+    return (!check_real || real_total == real(value)) &&
+           (!check_imag || imag_total == imag(value))
+end
+
 @inline function _surface_sie_pair_sum_3d(
         pairs::NTuple{L,Tuple{ComplexF64,ComplexF64}},
         row::Int,
@@ -1257,6 +1292,12 @@ end
     end
     if _matrixfree_complex_reduction_requires_exact(
             value, real_magnitude, imag_magnitude, L)
+        # Safe-band factors above keep product and TwoSum residuals normal.
+        # Certify structural cancellations (for example identical media)
+        # without allocating a wide accumulator. Any rounded operation
+        # still follows the exact fallback.
+        _surface_sie_pairs_are_exact_3d(
+            pairs, value, real_magnitude, imag_magnitude) && return value
         return _surface_sie_pair_sum_bigfloat_3d(pairs, row, column)
     end
     return value

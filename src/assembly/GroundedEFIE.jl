@@ -27,7 +27,7 @@ export reflection_coefficients_grounded, reflection_coefficient_vectors_grounded
     kw = _validated_lattice_wavenumber(k, lattice)
     displacement = r - rp
     R = hypot(hypot(displacement[1], displacement[2]), displacement[3])
-    g0 = (_periodic_rwg_bloch_phase(kw, R) / R) / (4π)
+    g0 = (_periodic_rwg_bloch_phase(kw, R) / (4π)) / R
     return g0 + greens_periodic_correction(r, rp, kw, lattice)
 end
 
@@ -40,7 +40,7 @@ end
         spectral_terms::Vector{_PeriodicSpectralEwaldTerm})
     displacement = r - rp
     R = hypot(hypot(displacement[1], displacement[2]), displacement[3])
-    g0 = (_periodic_rwg_bloch_phase(k, R) / R) / (4π)
+    g0 = (_periodic_rwg_bloch_phase(k, R) / (4π)) / R
     return g0 + _greens_periodic_correction_cached(
         r, rp, k, lattice, spatial_terms, spectral_terms)
 end

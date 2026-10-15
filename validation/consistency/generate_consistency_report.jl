@@ -131,6 +131,7 @@ function compute_paper_metrics(datadir::AbstractString)
         max_grad_rel_err_reference = maximum(gradient.rel_error),
         max_grad_rel_err_mesh_sweep = maximum(convergence.max_grad_err),
         min_energy_ratio = minimum(convergence.energy_ratio),
+        max_energy_ratio_error = maximum(abs.(convergence.energy_ratio .- 1)),
         nominal_J_opt_pct = nominal.J_opt_pct,
         nominal_J_pec_pct = nominal.J_pec_pct,
         nominal_improvement_factor = nominal.J_opt_pct / nominal.J_pec_pct,
@@ -152,9 +153,10 @@ end
 function consistency_checks(metrics)
     return [
         ("Mesh-sweep max gradient error <= 3e-6", metrics.max_grad_rel_err_mesh_sweep <= 3e-6),
-        ("Minimum energy ratio >= 0.98", metrics.min_energy_ratio >= 0.98),
+        ("Maximum energy-ratio error <= 0.02", metrics.max_energy_ratio_error <= 0.02),
         ("Nominal J_opt > nominal J_PEC", metrics.nominal_J_opt_pct > metrics.nominal_J_pec_pct),
         ("PEC near-target mean |ΔD| <= 0.5 dB", metrics.pec_crossval.target_mean_abs_diff_db <= 0.5),
+        ("Beam validation contains at least one case", metrics.beam_matrix_num_cases > 0),
         ("Beam-matrix |Δθ_main| <= 3° for all cases", metrics.beam_matrix_pass_main_theta == metrics.beam_matrix_num_cases),
         ("Beam-matrix |ΔD_main| <= 1.5 dB for all cases", metrics.beam_matrix_pass_main_level == metrics.beam_matrix_num_cases),
         ("Beam-matrix |ΔSLL| <= 3 dB for all cases", metrics.beam_matrix_pass_sll == metrics.beam_matrix_num_cases),
@@ -182,6 +184,7 @@ function write_snapshot_csv(metrics, out_csv::AbstractString)
     push!(rows, ("max_grad_rel_err_reference", metrics.max_grad_rel_err_reference, ""))
     push!(rows, ("max_grad_rel_err_mesh_sweep", metrics.max_grad_rel_err_mesh_sweep, ""))
     push!(rows, ("min_energy_ratio", metrics.min_energy_ratio, ""))
+    push!(rows, ("max_energy_ratio_error", metrics.max_energy_ratio_error, ""))
     push!(rows, ("nominal_J_opt_pct", metrics.nominal_J_opt_pct, "%"))
     push!(rows, ("nominal_J_pec_pct", metrics.nominal_J_pec_pct, "%"))
     push!(rows, ("nominal_improvement_factor", metrics.nominal_improvement_factor, "x"))
@@ -218,6 +221,7 @@ function write_report_markdown(metrics, checks, out_md::AbstractString; commit::
     push!(lines, @sprintf("| Max gradient rel. error (reference) | %.3e |", metrics.max_grad_rel_err_reference))
     push!(lines, @sprintf("| Max gradient rel. error (mesh sweep) | %.3e |", metrics.max_grad_rel_err_mesh_sweep))
     push!(lines, @sprintf("| Minimum energy ratio | %.3f |", metrics.min_energy_ratio))
+    push!(lines, @sprintf("| Maximum energy-ratio error | %.3e |", metrics.max_energy_ratio_error))
     push!(lines, @sprintf("| Nominal J_opt | %.3f %% |", metrics.nominal_J_opt_pct))
     push!(lines, @sprintf("| Nominal J_PEC | %.3f %% |", metrics.nominal_J_pec_pct))
     push!(lines, @sprintf("| Nominal improvement factor | %.2f x |", metrics.nominal_improvement_factor))
@@ -234,7 +238,7 @@ function write_report_markdown(metrics, checks, out_md::AbstractString; commit::
     push!(lines, "- Cases with |Δθ_main| <= 3°: $(metrics.beam_matrix_pass_main_theta)/$(metrics.beam_matrix_num_cases)")
     push!(lines, "- Cases with |ΔD_main| <= 1.5 dB: $(metrics.beam_matrix_pass_main_level)/$(metrics.beam_matrix_num_cases)")
     push!(lines, "- Cases with |ΔSLL| <= 3 dB: $(metrics.beam_matrix_pass_sll)/$(metrics.beam_matrix_num_cases)")
-    push!(lines, "- Beam-centric matrix status: $((metrics.beam_matrix_pass_main_theta == metrics.beam_matrix_num_cases && metrics.beam_matrix_pass_main_level == metrics.beam_matrix_num_cases && metrics.beam_matrix_pass_sll == metrics.beam_matrix_num_cases) ? "PASS" : "FAIL")")
+    push!(lines, "- Beam-centric matrix status: $((metrics.beam_matrix_num_cases > 0 && metrics.beam_matrix_pass_main_theta == metrics.beam_matrix_num_cases && metrics.beam_matrix_pass_main_level == metrics.beam_matrix_num_cases && metrics.beam_matrix_pass_sll == metrics.beam_matrix_num_cases) ? "PASS" : "FAIL")")
 
     open(out_md, "w") do io
         for line in lines

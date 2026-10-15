@@ -1,4 +1,6 @@
 using DiffMoM,Test,LinearAlgebra
+include(joinpath(@__DIR__, "helpers", "dense_fft_workspace.jl"))
+
 
 # The adjacent dense-workspace suite defines the mixed sheet/via/volume fixture.
 const _fft_modal_block_observations=NamedTuple[]

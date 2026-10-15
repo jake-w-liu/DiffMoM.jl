@@ -34,6 +34,11 @@ export analytical_integral_1overR, grad_analytical_integral_1overR,
     scale = maximum((
         scale1, scale2, maximum(abs, P - V1)))
     isfinite(scale) && scale > 0.0 || return nothing
+    # Far observations cancel edge logarithms against the solid-angle term;
+    # thin triangles also lose their normal under a common normalization.
+    # Preserve the full geometry in the existing high-precision closed form.
+    (scale > 16 * max(scale1, scale2) || normal_norm < sqrt(eps(Float64))) &&
+        return nothing
     # A single normalization scale is useful only if it preserves every
     # nonzero stored difference.  Otherwise an off-plane observation or a thin
     # edge can become exactly coplanar/degenerate and change the closed form.

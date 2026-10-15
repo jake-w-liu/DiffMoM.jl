@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import argparse
 import hashlib
 import importlib.util
 import json
@@ -8,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -777,6 +779,41 @@ class ValidationReportTests(unittest.TestCase):
         with mock.patch.object(common.subprocess, "run", side_effect=failure):
             with self.assertRaisesRegex(SystemExit, "exited with status 7"):
                 common.run_command(["solver", "--case", "bad"], REPO_ROOT)
+
+    def test_meep_monitors_bracket_the_actual_metal_slab(self) -> None:
+        common = load_module("meep_common_monitor_geometry", MEEP_DIR / "_meep_common.py")
+        parser = argparse.ArgumentParser()
+        common.add_runtime_arguments(parser, resolution_default=36, after_sources_default=200.0)
+        common.validate_runtime_geometry(parser, parser.parse_args([]))
+        for options in (
+            ["--metal-thickness-lambda", "5"],
+            ["--tran-offset-lambda", "3.1"],
+            ["--source-offset-lambda", "2.1", "--refl-offset-lambda", "0"],
+            # Requested thin metal is expanded to one cell by the solver.
+            ["--resolution", "1", "--source-offset-lambda", "1.4"],
+        ):
+            with self.subTest(options=options), mock.patch.object(parser, "error", side_effect=ValueError) as error:
+                with self.assertRaises(ValueError):
+                    common.validate_runtime_geometry(parser, parser.parse_args(options))
+                error.assert_called_once()
+                self.assertIn("metal slab", error.call_args.args[0])
+
+    def test_bempp_structured_mesh_is_private_and_removed_after_import_failure(self) -> None:
+        runner = load_module("bempp_private_structured_mesh", BEMPP_DIR / "run_impedance_cross_validation.py")
+        imported = []
+        def import_grid(path):
+            path = Path(path)
+            self.assertTrue(path.is_file())
+            imported.append(path)
+            raise RuntimeError("controlled external import failure")
+        fake = SimpleNamespace(import_grid=import_grid)
+        with mock.patch.object(runner,"load_bempp",return_value=(fake,None)):
+            for frequency in (3e9,6e9):
+                with self.assertRaisesRegex(RuntimeError,"controlled external import failure"):
+                    runner.run_bempp_impedance(frequency,4.,1/3,"structured",1,1,200.,0.,0.,
+                        2,2,"minus","e_cross_n",1.,"plus",1.)
+        self.assertNotEqual(imported[0].parent,imported[1].parent)
+        self.assertTrue(all(not path.parent.exists() for path in imported))
 
     def test_meep_analyzer_rejects_empty_case_lists_without_traceback(self) -> None:
         result = self.run_cli(

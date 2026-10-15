@@ -378,23 +378,22 @@ end
 )
     _run_exact_fallback_check(exact_fallback_check)
     parameter_count = length(Mp)
+    # A weighted bilinear term has four Float64 factors. Keep the original
+    # products until the complete angle reduction has been weighted/combined.
     return setprecision(
-            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
-        totals = fill(zero(BigFloat), parameter_count)
-        @inbounds for angle in eachindex(
-            I_all, lambda_all, objective_scales)
-            angle_gradient = gradient_impedance(
-                Mp, I_all[angle], lambda_all[angle]; reactive=reactive)
-            scale = BigFloat(objective_scales[angle])
-            for parameter in eachindex(totals, angle_gradient)
-                totals[parameter] +=
-                    scale * BigFloat(angle_gradient[parameter])
-            end
-        end
-
+            BigFloat, _IEEE_SCALED_BILINEAR_FALLBACK_PRECISION) do
         gradient = Vector{Float64}(undef, parameter_count)
-        @inbounds for parameter in eachindex(gradient, totals)
-            gradient[parameter] = Float64(totals[parameter])
+        component = reactive ? Val(:imag) : Val(:real)
+        @inbounds for parameter in eachindex(gradient, Mp)
+            total = zero(BigFloat)
+            for angle in eachindex(I_all, lambda_all, objective_scales)
+                scale = BigFloat(objective_scales[angle])
+                iszero(scale) && continue
+                bilinear = _accumulate_bilinear_component_bigfloat(
+                    lambda_all[angle], Mp[parameter], I_all[angle], component)
+                total += (reactive ? -2 : 2) * scale * bilinear
+            end
+            gradient[parameter] = Float64(total)
             isfinite(gradient[parameter]) ||
                 throw(OverflowError(
                     "multi-angle objective gradient at parameter $parameter " *
@@ -402,6 +401,31 @@ end
         end
         return gradient
     end
+end
+
+function _multiangle_gradient_requires_exact(Mp, currents, adjoints, scales)
+    _ieee_bilinear_values_require_fallback(scales, Float64) && return true
+    for values in currents
+        _ieee_bilinear_values_require_fallback(values, Float64) && return true
+    end
+    for values in adjoints
+        _ieee_bilinear_values_require_fallback(values, Float64) && return true
+    end
+    return any(matrix -> _ieee_bilinear_matrix_requires_fallback(matrix, Float64), Mp)
+end
+
+function _multiangle_gradient_add!(total::Vector{Float64}, scale::Float64,
+                                  contribution::Vector{Float64})
+    # The optimizer's line-search closure captures/reassigns its gradient.
+    # Keep the elementwise reduction in a typed kernel to avoid boxing it.
+    @inbounds for parameter in eachindex(total, contribution)
+        term = scale * contribution[parameter]
+        combined = total[parameter] + term
+        (!isfinite(combined) ||
+         _scaled_sum_requires_exact(total[parameter], term, combined)) && return false
+        total[parameter] = combined
+    end
+    return true
 end
 
 function _multiangle_objective_scales(J_angles::Vector{Float64},
@@ -438,10 +462,8 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
         copyto!(scales, weights)
         value = dot(weights, J_angles)
         needs_fallback = !isfinite(value) ||
-            _ieee_bilinear_values_require_fallback(
-                weights, Float64) ||
-            _ieee_bilinear_values_require_fallback(
-                J_angles, Float64)
+            _ieee_dot_component_requires_fallback(
+                weights, J_angles, Val(:real), value, Float64)
         needs_fallback &&
             (value = _multiangle_linear_objective_bigfloat(
                 J_angles, weights, exact_fallback_check))
@@ -1098,9 +1120,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
 
         # ── 5. Gradient: g[p] = Σ_a scalar_a · ∂J_a/∂θ_p ───────
         g = zeros(P)
-        gradient_finite =
-            !_ieee_bilinear_values_require_fallback(
-                objective_scales, Float64)
+        gradient_finite = !_multiangle_gradient_requires_exact(
+            Mp, I_all, lambda_all, objective_scales)
         for a in 1:M
             gradient_finite || break
             g_a = gradient_impedance(Mp, I_all[a], lambda_all[a]; reactive=reactive)
@@ -1108,11 +1129,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 gradient_finite = false
                 break
             end
-            axpy!(objective_scales[a], g_a, g)
-            if !_linear_array_is_finite(g)
-                gradient_finite = false
-                break
-            end
+            gradient_finite = _multiangle_gradient_add!(g, objective_scales[a], g_a)
         end
         if !gradient_finite
             g = _multiangle_gradient_bigfloat(

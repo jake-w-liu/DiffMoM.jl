@@ -1,42 +1,42 @@
 audit_date = "2026-10-15"
 base_revision = "dd2f0eb4df088a25b95e7ee2b97fe52454d1fcc6"
-status = "local radiation fixes verified; complete conformal/FFT validation pending fresh full run"
+status = "complete fresh body review of all 25 owned planar files; localized CRC recorded; final full GitHub validation pending"
 scope = "Fresh planar scientific/numerical public-API, implementation, resource/ownership and performance audit. IO/network/calibration/extraction/vector-fit ownership is recorded separately."
 julia = "1.13.1"
 julia_threads = 4
 blas_threads = 1
 whole_repository_bug_free_claim = false
 global_optimization_claim = false
-full_body_review_completed = 14
-full_body_review_remaining = 11
-body_review_note = "Initial route/formula/test traces below are separate from complete source-body evidence. The per-file map records the explicit body recheck after the root requested completion evidence; pending files are not counted complete."
+full_body_review_completed = 25
+full_body_review_remaining = 0
+body_review_note = "Initial route/formula/test traces below are separate from complete source-body evidence. Every listed body was subsequently read in full during this reset, including all remaining implementations after the root requested explicit completion evidence. Runtime suite gaps below remain separate and pending."
 
 [fresh_read_status]
-"src/planar/PlanarTypes.jl" = "complete body recheck;309 lines"
-"src/planar/PlanarBasis.jl" = "partial: basis ownership/trace/formula routes reviewed; remaining complete709-line body recheck pending"
-"src/planar/PlanarVias.jl" = "complete body recheck;452 lines"
-"src/planar/PlanarVolumes.jl" = "complete body recheck;347 lines"
-"src/planar/PlanarImmittance.jl" = "complete body recheck;356 lines"
-"src/planar/PlanarGreens.jl" = "partial: modal formulas/dispatch reviewed; remaining complete814-line body recheck pending"
-"src/planar/PlanarSolve.jl" = "partial: solve/ownership/resource acceptance routes reviewed; remaining complete775-line body recheck pending"
-"src/planar/PlanarFFTAssembly.jl" = "complete body recheck;219 lines"
-"src/planar/PlanarUFFT.jl" = "partial: operator/alias/modal workspace routes reviewed; remaining complete693-line body recheck pending"
-"src/planar/PlanarTriangleTransforms.jl" = "complete body recheck;209 lines"
-"src/planar/PlanarConformal.jl" = "partial: constructor/current/port/weights routes reviewed; remaining complete608-line body recheck pending"
-"src/planar/PlanarConformalMeshing.jl" = "complete body recheck;180 lines"
-"src/planar/PlanarConformalUFFT.jl" = "complete body recheck;329 lines"
-"src/planar/PlanarConformalProjection.jl" = "partial: provider/preflight/residual routes reviewed; remaining complete687-line body recheck pending"
-"src/planar/PlanarConformalMultiProjection.jl" = "partial: bounded operator/correction routes reviewed; remaining complete385-line body recheck pending"
-"src/planar/PlanarConformalDefect.jl" = "partial: original-action defect/correction routes reviewed; remaining complete366-line body recheck pending"
-"src/planar/PlanarHybrid.jl" = "complete body recheck;227 lines"
-"src/planar/PlanarHybridUFFT.jl" = "complete body recheck;305 lines"
-"src/planar/PlanarConductorLoss.jl" = "complete body recheck;163 lines"
-"src/planar/PlanarSurface.jl" = "complete body recheck;170 lines; confirmed Huray numerator overflow awaiting freeze release"
-"src/planar/PlanarMetalModel.jl" = "complete body recheck;292 lines"
-"src/planar/PlanarAdjoint.jl" = "partial: gradient contractions and derivatives reviewed; remaining complete745-line body recheck pending"
-"src/planar/PlanarSweep.jl" = "partial: sweep/resonance public contracts reviewed; remaining complete574-line body recheck pending"
-"src/planar/PlanarCurrents.jl" = "complete body recheck;335 lines"
-"src/planar/PlanarRadiation.jl" = "partial body recheck1:330 read,331:614 pending; earlier range/formula/metric CRC recorded below"
+"src/planar/PlanarTypes.jl" = "complete fresh body recheck; 309 lines"
+"src/planar/PlanarBasis.jl" = "complete fresh body recheck; 709 lines"
+"src/planar/PlanarVias.jl" = "complete fresh body recheck; 452 lines"
+"src/planar/PlanarVolumes.jl" = "complete fresh body recheck; 347 lines"
+"src/planar/PlanarImmittance.jl" = "complete fresh body recheck; 356 lines"
+"src/planar/PlanarGreens.jl" = "complete fresh body recheck; 814 lines"
+"src/planar/PlanarSolve.jl" = "complete fresh body recheck; 775 lines"
+"src/planar/PlanarFFTAssembly.jl" = "complete fresh body recheck; 219 lines"
+"src/planar/PlanarUFFT.jl" = "complete fresh body recheck; 693 lines"
+"src/planar/PlanarTriangleTransforms.jl" = "complete fresh body recheck; 209 lines"
+"src/planar/PlanarConformal.jl" = "complete fresh body recheck; 608 lines"
+"src/planar/PlanarConformalMeshing.jl" = "complete fresh body recheck; 180 lines"
+"src/planar/PlanarConformalUFFT.jl" = "complete fresh body recheck; 329 lines"
+"src/planar/PlanarConformalProjection.jl" = "complete fresh body recheck; 687 lines"
+"src/planar/PlanarConformalMultiProjection.jl" = "complete fresh body recheck; 385 lines"
+"src/planar/PlanarConformalDefect.jl" = "complete fresh body recheck; 366 lines"
+"src/planar/PlanarHybrid.jl" = "complete fresh body recheck; 227 lines"
+"src/planar/PlanarHybridUFFT.jl" = "complete fresh body recheck; 305 lines"
+"src/planar/PlanarConductorLoss.jl" = "complete fresh body recheck; 163 lines"
+"src/planar/PlanarSurface.jl" = "complete fresh body recheck; 174 lines; Huray numerator overflow fixed; new4 and existing roughness91/conductor906 pass"
+"src/planar/PlanarMetalModel.jl" = "complete fresh body recheck; 292 lines"
+"src/planar/PlanarAdjoint.jl" = "complete fresh body recheck; 745 lines"
+"src/planar/PlanarSweep.jl" = "complete fresh body recheck; 574 lines"
+"src/planar/PlanarCurrents.jl" = "complete fresh body recheck; 335 lines"
+"src/planar/PlanarRadiation.jl" = "complete fresh body recheck; 614 lines"
 
 [[surface]]
 files = ["src/planar/PlanarTypes.jl", "src/planar/PlanarBasis.jl", "src/planar/PlanarVias.jl", "src/planar/PlanarVolumes.jl"]
@@ -107,6 +107,15 @@ status = "fixed and locally reverified"
 fix = "Preserve ordinary fast tolerance; recover the same norm-based bound with component scaling and exponent-balanced scalar products on range failure."
 reverify = "Negative public far-field excitation rejects, positive counterpart remains finite, max_bytes rejection preserved, original 15 accepted-power checks and 15 hybrid-radiation checks pass; independent 512-bit oracle passed 12 signed/complex exponent variants."
 
+
+[[finding]]
+candidate = "Huray correction numerator overflows before finite screening division"
+dimension = "domain correctness, numerical range, performance"
+verification = "Public HurayRoughness(1.0,1.4e308/(4pi)),f=1/(pi*mu0),sigma=1 returned Inf. Independent512-bit published equation gives8.400000000000001e307. The area is finite; multiplying it by1.5 overflows before division by2.5."
+status = "fixed and locally reverified; current revision CI pending"
+fix = "Retain ordinary arithmetic and recover the complete correction with the existing scoped wide equation only when its result is nonfinite."
+reverify = "test_planar_huray_numerator_range.jl4 passes for screening denominators2.5 and5; existing test_planar_surface_roughness_range.jl91 and test_planar_conductor_surface_range.jl906 pass. TEMP/diffmom-huray-sie-final-crc.log."
+
 [local_evidence]
 driver = "julia +1.13.1 --project=. --startup-file=no --threads=4 --heap-size-hint=600M <temp>/diffmom-planar-physics-reset-driver.jl <listed test files>"
 log_directory = "C:/Users/User/AppData/Local/Temp"
@@ -138,6 +147,28 @@ benchmark_old_allocated_bytes = 1121556
 benchmark_new_allocated_bytes = 560755
 resource_limit_note = "Heap hints are not hard memory caps. Sys.maxrss reports process peak; Julia allocation counts are cumulative and include compilation in test timings. One separate probe hit LLVM OOM under simultaneous host pressure; it is not a passing test."
 
+huray_final_log = "diffmom-huray-sie-final-crc.log"
+huray_final_files = ["test_planar_huray_numerator_range.jl", "test_planar_surface_roughness_range.jl", "test_planar_conductor_surface_range.jl"]
+huray_final_checks = [4, 91, 906]
+huray_ordinary_benchmark_log = "diffmom-huray-sie-final-perf.log"
+huray_ordinary_old_allocated_bytes = 0
+huray_ordinary_new_allocated_bytes = 0
+huray_ordinary_old_seconds = 0.00000000876
+huray_ordinary_new_seconds = 0.00000000901
+huray_final_elapsed_seconds = [0.7629765, 1.5831407, 5.8175039]
+
 [pending]
 full_validation = "Fresh end-to-end process-isolated full run, including conformal/UFFT/folded/defect/multilevel/wide-current/receiving-moment tests and dependency/platform boundaries."
 optimization = "No universal optimum is asserted. Domain scaling/peak-memory and all public workloads must be represented by root audit evidence before any bounded optimization verdict."
+
+
+[[test_configuration_correction]]
+path = "test/test_planar_contracted_source_accuracy.jl"
+trigger = "Fresh Linux full-CI shard4 oncbf58e8f failed three inherited2e-10 Y-scaling assertions while solves requested only1e-9 physical-equation residual. Local Windows did not reproduce failure; it was investigated rather than hidden by loosening the assertion."
+public_contract = "solve_planar_contracted documents a voltage-normalized original-equation residual target, not forward Y error at the same tolerance. This fixture's voltage-normalized operator condition is4.6262802281248944e14."
+change = "Request existing target-squared1e-18 for BOTH scaling reference and scaled solves. Keep original2e-10 output-scaling assertion; strengthen these solves' physical residual assertions to1e-18. No production solver change or extra production refinement."
+independent_oracle = "Independent256-bit original-matrix solves for each actually stored RHS: all returned Y matrices match the independently rounded oracle bit-for-bit. Physical residuals1.51e-19 through7.02e-19; normalized Y scaling1.68e-16 through2.06e-16, consistent with stored source-product rounding."
+status = "Full corrected file136 checks passed locally; Linux rerun remains parent-owned"
+logs = ["TEMP/diffmom-contracted-scaling-oracle-before.log", "TEMP/diffmom-contracted-scaling-oracle-final.log", "TEMP/diffmom-contracted-source-scaling-final-crc.log"]
+elapsed_seconds = 40.7753662
+peak_rss_bytes = 735039488

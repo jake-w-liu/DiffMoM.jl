@@ -100,3 +100,27 @@ implementation = "Reviewed ordered dark/clear behavior, formal chord tie handlin
 resources = "Exact predicates derive workspace and precision limits from operands/depth before allocating; compressed streams and temporary directories close on errors. Archive member/metadata/payload limits are checked before extraction. JSON performs a bounded size pass and charges three output copies."
 performance = "Ordinary certified artwork predicates use fixed-size interval scalars; exact fallback is bounded and cold. Decompression uses fixed dictionary/copy buffers. No new throughput or absolute optimization claim."
 verification = "Independent source/control-flow review completed this reset. IO reviewer separately passed 29 original artwork files/590826 checks; final full-validation execution on the production revision remains pending."
+
+[[finding]]
+candidate = "Accepted Meep runtime controls can put monitors or the source inside metal or on the wrong side of the scatterer."
+dimension = "scientific validation and configuration"
+verification = "Default six-wavelength cell with thickness5 accepts metalz[-2.5,2.5] and source1.65/reflection1.4/transmission-1.65 inside metal. Transmission offset3.1 accepts a transmission planez1.1 above the default metal. Source offset2.1 accepts illumination from below although the workflow assumes incidence from above. Direct argparse/runtime-control probe reproduced all three before fixing."
+status = "fixed; all24 Python validation tests pass in4.26seconds; GitHub job pending"
+fix = "Before invoking Meep, require reflection/source above and transmission below the actual slab, including expansion to the solver's minimum one-cell thickness. Existing PML checks remain. Add the inexpensive existing Python contract suite as a separate concurrent CI job."
+reverify = "Valid defaults and four invalid geometry/resolution configurations in test_validation_reports.py; all24 Python checks pass. TEMP/diffmom-reset-validation-python-crc.log. No Meep scientific solve is claimed by this configuration test."
+reference = "https://meep.readthedocs.io/en/latest/Python_Tutorials/Basics/"
+
+[[surface]]
+files = ["validation/bempp/_bempp_common.py", "validation/bempp/run_pec_field_case.py", "validation/bempp/run_impedance_cross_validation.py", "validation/bempp/run_impedance_case_julia_reference.jl", "validation/tests/test_pn_validation_contracts.py"]
+domain = "Fresh full-body review of all 12 active Bempp companions and all 17 active PN3D companions completed. Report comparisons, norm conventions, observation registration and external command boundaries traced."
+implementation = "Fixed three verified runner defects: input provenance previously hashed files after the solve; structured Bempp mesh paths collided across concurrent cases; Julia impedance references ignored requested nx/ny. Capture original bytes/hash before solving, use unique scoped mesh directories with content hashes, and pass/validate matching mesh counts on both solver commands."
+resources = "Input snapshot bytes released after parsing; temporary mesh directories clean up on import failure. Fast contract fixtures use temporary files and solver-boundary stand-ins."
+performance = "All 27 Python contract/report tests pass in 3.85 seconds. These tests do not claim external Bempp or Meep scientific agreement."
+verification = "Before/after regressions reproduce source mutation during a solve, colliding mesh paths and missing Julia mesh flags. Independent IO reviewer also passed all 27 checks. Tiny Julia CLI solve is recorded separately when complete."
+
+[[verification]]
+kind = "batch3 focused package suite"
+command = "JULIA_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 julia --project=. --startup-file=no --heap-size-hint=1G -e 'using Pkg; Pkg.test(;julia_args=[\"--heap-size-hint=1G\"])'"
+result = "PASS, 281.393 seconds; Aqua, ExplicitImports and focused scientific/resource regressions included."
+log = "TEMP/diffmom-reset-batch3-focused.log"
+limits = "The audit remains active for the independently confirmed Q scaling defect, remaining examples and final GitHub full validation."

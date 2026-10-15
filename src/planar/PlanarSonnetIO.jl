@@ -809,10 +809,12 @@ function _sonnet_cup_standard(st,gr,sheets,members,paths,surface_zs;
     # Members on one pad can share launch cells where their edges meet —
     # corner cells belong to exactly one marginal so their junction
     # contribution is removed once.
-    portsets=Set{Tuple{Int,Int}}[];claimed=Set{Tuple{Int,Int}}()
+    portsets=Set{Tuple{Int,Int}}[];claimed=Set{Tuple{Int,Int,Int}}()
     for m in members
-        cells=setdiff(Set(_sonnet_cup_terminal_cells(m.terminal)),claimed)
-        union!(claimed,cells);push!(portsets,cells)
+        level=m.terminal.level
+        cells=Set(c for c in _sonnet_cup_terminal_cells(m.terminal)
+            if !((level,c...) in claimed))
+        union!(claimed,((level,c...) for c in cells));push!(portsets,cells)
     end
     allport=reduce(union,portsets;init=Set{Tuple{Int,Int}}())
     portadj=Set{Tuple{Int,Int}}()
@@ -850,7 +852,8 @@ function _sonnet_cup_standard(st,gr,sheets,members,paths,surface_zs;
             for (k,m) in enumerate(members)
                 m.terminal.level==lv || continue
                 for c in m.hostcells
-                    minus!=0 && c in portsets[minus] && continue
+                    minus!=0 && m.terminal.level==members[minus].terminal.level &&
+                        c in portsets[minus] && continue
                     pad.mask[c[1],c[2]]=true
                 end
             end
@@ -1387,13 +1390,20 @@ function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString
         # Rautio--Demir equation 11 scales Rrf by the face-current weights,
         # retaining the full-thickness DC resistance in the slab crossover.
         x=k*gamma*thickness
+        (isfinite(x) && !iszero(x)) ||
+            return _planar_scaled_open_real_slab(freq,sigma,thickness,k*k)
         zs=if abs(x)<1e-4
             k*skin*(inv(x)+x/3-x^3/45)
         else
             q=exp(-x)
             k*skin*(1+q*q)/(1-q*q)
         end
-        isfinite(zs) || throw(ArgumentError("NOR sheet impedance is not representable"))
+        if !isfinite(zs)
+            # k*Zskin*coth(k*gamma*t) is the open slab with permeability
+            # k^2*mu0. Recover its finite DC limit when x or its reciprocal
+            # leaves Float64 range, using the balanced slab evaluator.
+            return _planar_scaled_open_real_slab(freq,sigma,thickness,k*k)
+        end
         return zs
     end
     # VOL/ARR records are via metals: a sheet polygon referencing one is a
@@ -3191,7 +3201,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     # Terminal adapters first lower a genuinely source-free geometry clone,
     # then attach their physical source. Do not invent a temporary driven
     # terminal or change the public requirement for a nonempty port list.
-    problem=if _allow_portless && isempty(ports) && isempty(cup_terminals)
+    problem=if isempty(ports) && (_allow_portless || !isempty(cup_terminals))
         planar_validate(st)
         basis=build_planar_basis(gr,sheets,ports;vias=vias,bricks=bricks)
         planar_basis_count(basis)>0 || throw(ArgumentError("no basis functions: check masks/connections"))

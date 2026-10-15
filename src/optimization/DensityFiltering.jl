@@ -62,7 +62,10 @@ end
 )
     inv_h = 1.0 / r_min
     isfinite(inv_h) || return false
-    int_upper_bound = Float64(typemax(Int))
+    # A large common offset can round nearby centroids into cells hundreds
+    # of indices apart even while the integer indices still fit Int. Keep a
+    # small quotient band here; the existing rational path handles the rest.
+    int_upper_bound = min(Float64(typemax(Int)), 0x1.0p30)
     @inbounds for centroid in centroids
         for component in 1:3
             delta = centroid[component] - origin[component]
@@ -72,6 +75,20 @@ end
         end
     end
     return true
+end
+
+@inline function _filter_integer_cell_coordinate(value::Float64, origin::Float64,
+        cell_size::Float64, inverse_cell_size::Float64)
+    value == origin && return 0
+    scaled = (value - origin) * inverse_cell_size
+    index = floor(Int, scaled)
+    # Certify the floor, rather than relying on a rounded quotient at a cell
+    # boundary. The preceding band leaves ample room for this error bound and
+    # for the +/-1 neighbor stencil without Int overflow.
+    uncertainty = 8eps(Float64) * max(abs(scaled), 1.0)
+    min(scaled - index, (index + 1) - scaled) > uncertainty && return index
+    exact_delta = Rational{BigInt}(value) - Rational{BigInt}(origin)
+    return Int(floor(BigInt, exact_delta / Rational{BigInt}(cell_size)))
 end
 
 function _filter_triplet_count(
@@ -161,8 +178,8 @@ function _filter_weight_triplets_int(
     cells = Vector{NTuple{3,Int}}(undef, Nt)
     @inbounds for t in 1:Nt
         centroid = centroids[t]
-        key = ntuple(component ->
-            floor(Int, (centroid[component] - origin[component]) * inv_h), 3)
+        key = ntuple(component -> _filter_integer_cell_coordinate(
+            centroid[component], origin[component], r_min, inv_h), 3)
         cells[t] = key
         push!(get!(() -> Int[], buckets, key), t)
     end
