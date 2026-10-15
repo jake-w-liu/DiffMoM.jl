@@ -254,10 +254,17 @@ function _touchstone_options(text;max_bytes=_default_max_dense_payload_bytes(),o
 end
 
 function _network_constitutive_s(E,F,refs)
-    D=Diagonal(sqrt.(refs)); Di=Diagonal(inv.(sqrt.(refs)))
-    S = -(E*D-F*Di) \ (E*D+F*Di)
+    roots=sqrt.(refs)
+    left=E*Diagonal(roots);right=F*Diagonal(inv.(roots))
+    # Each scaled constitutive block is needed twice. Form both wave
+    # coefficients in place, then reuse their owned buffers for LU and S.
+    for index in eachindex(left,right)
+        e,f=left[index],right[index]
+        left[index]=e-f;right[index]=-e-f
+    end
+    S=ldiv!(lu!(left),right)
     all(isfinite,S) || throw(ArgumentError("network constitutive equations have a singular wave solve"))
-    return Matrix{ComplexF64}(S)
+    return S isa Matrix{ComplexF64} ? S : Matrix{ComplexF64}(S)
 end
 
 function _touchstone_to_s(M,kind,refs,version)

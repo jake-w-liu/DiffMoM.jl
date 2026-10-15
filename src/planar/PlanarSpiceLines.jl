@@ -37,7 +37,7 @@ function _spice_line_product(factors...)
     result
 end
 
-function _spice_line_fields(fields,values,budget,card;model=false)
+function _spice_line_fields(fields,values,budget,card;model=false,expression=_spice_expression)
     numeric=model ? ("r","l","g","c","len","rel","abs","compactrel","compactabs") : ("z0","td","f","nl")
     flags=model ? ("nocontrol","steplimit","nosteplimit","lininterp","quadinterp","mixedinterp","truncnr","truncdontcut") : ()
     result=Dict{String,Float64}();index=1
@@ -47,7 +47,7 @@ function _spice_line_fields(fields,values,budget,card;model=false)
         if index<length(fields) && fields[index+1]=="="
             index+2<=length(fields) || _spice_failure(card,"missing transmission-line parameter value")
             key in numeric || key in flags || _spice_failure(card,"unsupported transmission-line parameter $key")
-            result[key]=_spice_expression(fields[index+2],values,budget);index+=3
+            result[key]=expression(fields[index+2],values,budget);index+=3
         else
             key in flags || _spice_failure(card,"transmission-line numeric parameters require name=value")
             result[key]=1.;index+=1
@@ -88,9 +88,9 @@ function _spice_ltra_spec(card,values,budget)
     _SpiceLineSpec(:LTRA,0.,0.,r,l,g,c,len,_spice_identifier(tokens[2]),card,options)
 end
 
-function _spice_t_spec(card,values,budget)
+function _spice_t_spec(card,values,budget;expression=_spice_expression)
     length(card.tokens)>=8 || _spice_failure(card,"T requires four terminals, Z0 and TD or F")
-    parameters=_spice_line_fields(card.tokens[6:end],values,budget,card)
+    parameters=_spice_line_fields(card.tokens[6:end],values,budget,card;expression)
     haskey(parameters,"z0") && parameters["z0"]>0 || _spice_failure(card,"T requires positive Z0")
     haskey(parameters,"td")==haskey(parameters,"f") && _spice_failure(card,"T requires exactly one TD or F")
     haskey(parameters,"nl") && !haskey(parameters,"f") && _spice_failure(card,"NL requires F")

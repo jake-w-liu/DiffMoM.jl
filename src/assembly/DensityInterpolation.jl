@@ -226,6 +226,37 @@ function precompute_triangle_mass(
     return Mt
 end
 
+@noinline function _density_penalty_coefficient_bigfloat(
+        rho::Real, config::DensityConfig)
+    return setprecision(BigFloat, _DENSITY_INTERPOLATION_FALLBACK_PRECISION) do
+        interpolation = iszero(rho) ? one(BigFloat) :
+            -expm1(BigFloat(config.p) * log(BigFloat(rho)))
+        return interpolation * Complex{BigFloat}(config.Z_max)
+    end
+end
+
+@inline function _density_penalty_coefficient(rho::Real, config::DensityConfig)
+    isone(rho) && return zero(ComplexF64)
+    iszero(rho) && return config.Z_max
+    interpolation = 1 - rho^config.p
+    if interpolation < 0.125
+        # Power rounding followed by subtraction loses the small void
+        # fraction near rho=1, particularly for noninteger SIMP exponents.
+        interpolation = -expm1(config.p * log1p(rho - 1))
+    end
+    coefficient = interpolation * config.Z_max
+    if !isfinite(coefficient) ||
+       _ieee_dense_extreme_factor(interpolation, Float64) ||
+       _ieee_dense_extreme_factor(config.Z_max, Float64) ||
+       _ieee_dense_extreme_factor(coefficient, Float64) ||
+       iszero(coefficient)
+        # Keep an underflowing scalar until the mass entries restore its
+        # range; accumulation rounds the returned matrix entries instead.
+        return _density_penalty_coefficient_bigfloat(rho, config)
+    end
+    return coefficient
+end
+
 """
     assemble_Z_penalty(Mt, rho_bar, config;
                        max_output_bytes=Sys.free_memory())
@@ -254,14 +285,7 @@ function assemble_Z_penalty(Mt::Vector{<:AbstractMatrix},
         "density penalty matrix", "max_output_bytes")
 
     Z_pen = zeros(CT, N, N)
-    penalty_at = function(t)
-        penalty = (1 - rho_bar[t]^config.p) * config.Z_max
-        isfinite(penalty) ||
-            throw(OverflowError(
-                "density penalty coefficient for triangle $t is outside " *
-                "the representable ComplexF64 range"))
-        return penalty
-    end
+    penalty_at = t -> _density_penalty_coefficient(rho_bar[t], config)
     _accumulate_scaled_matrices!(
         Z_pen, nothing, Mt, penalty_at,
         "density penalty matrix")

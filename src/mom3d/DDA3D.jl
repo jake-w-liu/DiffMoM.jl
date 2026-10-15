@@ -991,6 +991,33 @@ function _electric_dipole_value_bigfloat_3d(
         (inv(R^3) + Complex{BigFloat}(0, 1) * kb / R^2) * near_vector)
 end
 
+# A cancelling output component does not require recomputing the other two.
+# Keep the same cross-product order and precision as the full vector kernel.
+function _electric_dipole_component_bigfloat_3d(
+        r::Vec3, rp::Vec3, k::Float64,
+        q::SVector{3,Complex{BigFloat}}, component::Int)
+    displacement = SVector{3,BigFloat}(ntuple(
+        axis -> BigFloat(r[axis]) - BigFloat(rp[axis]), 3))
+    norm_squared = sum(abs2, displacement)
+    distance = sqrt(norm_squared)
+    distance > 0 || error(
+        "electric_dipole_dyadic_3d requires distinct finite points.")
+    second = component == 1 ? 2 : component == 2 ? 3 : 1
+    third = component == 1 ? 3 : component == 2 ? 1 : 2
+    inner_second = displacement[third] * q[component] -
+                   displacement[component] * q[third]
+    inner_third = displacement[component] * q[second] -
+                  displacement[second] * q[component]
+    transverse = (inner_second * displacement[third] -
+                  inner_third * displacement[second]) / norm_squared
+    near = 2q[component] - 3transverse
+    kb = BigFloat(k)
+    phase = exp(Complex{BigFloat}(0, -kb * distance)) /
+            (4 * BigFloat(pi))
+    return phase * ((kb^2 / distance) * transverse +
+        (inv(distance^3) + Complex{BigFloat}(0, 1) * kb / distance^2) * near)
+end
+
 function _electric_dipole_apply_bigfloat_3d(r::Vec3, rp::Vec3, k::Float64,
                                              q::CVec3)
     precision = _electric_dipole_exact_precision_3d(r, rp, k)
@@ -1657,6 +1684,46 @@ end
     end
 end
 
+@inline function _dda_single_cancelling_component(
+        value::CVec3, real_magnitude::Vec3, imag_magnitude::Vec3,
+        term_count::Int)
+    selected = 0
+    for component in 1:3
+        requires_exact = !isfinite(real_magnitude[component]) ||
+            !isfinite(imag_magnitude[component]) ||
+            _matrixfree_complex_reduction_requires_exact(
+                value[component], real_magnitude[component],
+                imag_magnitude[component], term_count)
+        requires_exact || continue
+        iszero(selected) || return -1
+        selected = component
+    end
+    return selected
+end
+
+@noinline function _dda_operator_component_bigfloat_3d(
+        A::DDAOperator3D, x::AbstractVector{ComplexF64},
+        voxel::Int, component::Int)
+    return setprecision(BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
+        total = Complex{BigFloat}(x[_dda_index(voxel, component)])
+        for source in 1:A.grid.nvoxels
+            source == voxel && continue
+            alpha = A.alpha[source]
+            iszero(alpha) && continue
+            moment = _alpha_apply_bigfloat_vector_3d(
+                alpha, _read_field_component(x, source))
+            total -= _electric_dipole_component_bigfloat_3d(
+                A.grid.centers[voxel], A.grid.centers[source], A.k0,
+                moment, component)
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) || throw(OverflowError(
+            "DDA operator output at voxel $voxel is outside the " *
+            "representable ComplexF64 range."))
+        return converted
+    end
+end
+
 @noinline function _dda_adjoint_operator_field_bigfloat_3d(
         A::DDAOperator3D,
         x::AbstractVector{ComplexF64},
@@ -1754,10 +1821,18 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             err isa OverflowError || rethrow()
             needs_fallback = true
         end
-        needs_fallback |= _dda_accumulation_requires_exact(
-            Ei, real_magnitude, imag_magnitude, N)
         if needs_fallback
             Ei = _dda_operator_field_bigfloat_3d(A, xread, i)
+        else
+            component = _dda_single_cancelling_component(
+                Ei, real_magnitude, imag_magnitude, N)
+            if component > 0
+                exact_component = _dda_operator_component_bigfloat_3d(
+                    A, xread, i, component)
+                Ei = Base.setindex(Ei, exact_component, component)
+            elseif component < 0
+                Ei = _dda_operator_field_bigfloat_3d(A, xread, i)
+            end
         end
 
         for a in 1:3

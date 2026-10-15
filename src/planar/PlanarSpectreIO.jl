@@ -38,7 +38,7 @@ function _spectre_assignments(fields,card)
         fields[k+1]=="=" || _spice_failure(card,"missing Spectre parameter equals")
         key=_spectre_identifier(fields[k]);occursin(r"^[a-zA-Z][a-zA-Z0-9_]*$",key) ||
             _spice_failure(card,"unsupported Spectre parameter identifier")
-        push!(result,lowercase(key)=>_spectre_value(fields[k+2]))
+        push!(result,key=>_spectre_value(fields[k+2]))
     end
     result
 end
@@ -72,7 +72,7 @@ function _spectre_component(card,fields,names,definitions)
     props=Pair{String,String}[]
     for k in paramstart:3:length(fields)
         fields[k+1]=="=" || _spice_failure(card,"Spectre component parameters require name=value")
-        push!(props,lowercase(_spectre_identifier(fields[k]))=>fields[k+2])
+        push!(props,_spectre_identifier(fields[k])=>fields[k+2])
     end
     length(unique(first.(props)))==length(props) || _spice_failure(card,"duplicate Spectre component parameter")
     value(key)=begin
@@ -240,7 +240,7 @@ function planar_read_spectre(path::AbstractString;root=dirname(abspath(path)),
                         for k in pinend:3:length(fields)
                             key=_spectre_identifier(fields[k]);occursin(r"^[a-zA-Z][a-zA-Z0-9_]*$",key) ||
                                 _spice_failure(card,"unsupported Spectre default parameter identifier")
-                            push!(defaults,lowercase(key)=>_spectre_value(fields[k+2]))
+                            push!(defaults,key=>_spectre_value(fields[k+2]))
                         end
                         length(unique(first.(defaults)))==length(defaults) ||
                             _spice_failure(card,"duplicate Spectre formal parameter")

@@ -117,12 +117,13 @@ function _spice_tokens(text)
     emit();length(result)<=128 || throw(ArgumentError("too many SPICE fields"))
     result
 end
-function _spice_assignments(fields)
+function _spice_assignments(fields;dialect::Symbol=:spice)
     result=Pair{String,String}[]
     length(fields)%3==0 || throw(ArgumentError("SPICE parameters require name=value assignments"))
     for k in 1:3:length(fields)
         fields[k+1]=="=" || throw(ArgumentError("missing SPICE parameter equals"))
-        key=_spice_identifier(fields[k]);occursin(r"^[a-z][a-z0-9_]*$",key) || throw(ArgumentError("unsupported parameter identifier"))
+        key=dialect===:spectre ? String(fields[k]) : _spice_identifier(fields[k])
+        occursin(r"^[a-zA-Z][a-zA-Z0-9_]*$",key) || throw(ArgumentError("unsupported parameter identifier"))
         key in ("time","temper","hertz","freq") && throw(ArgumentError("reserved/dynamic SPICE parameter"))
         push!(result,key=>fields[k+2])
     end
@@ -131,7 +132,7 @@ end
 
 const _SPICE_CALLS=Dict{Symbol,Function}(Symbol("+")=>(+),Symbol("-")=>(-),Symbol("*")=>(*),Symbol("/")=>(/),Symbol("^")=>(^),
     :sqrt=>sqrt,:abs=>abs,:min=>min,:max=>max,:exp=>exp,:log=>log,:sin=>sin,:cos=>cos,:tan=>tan)
-function _spice_expression(text,values,budget=nothing)
+function _spice_expression(text,values,budget=nothing;dialect::Symbol=:spice)
     t=strip(text)
     ncodeunits(t)<=4096 || throw(ArgumentError("SPICE expression exceeds byte limit"))
     if length(t)>=2 && ((first(t)=='{' && last(t)=='}') || (first(t)=='\'' && last(t)=='\''))
@@ -152,7 +153,9 @@ function _spice_expression(text,values,budget=nothing)
         _spice_reserve!(budget,workspace);budget.used-=workspace
     end
     # Rewrite only numeric tokens; r2 and other parameter names stay intact.
-    t=replace(lowercase(t),r"(?<![a-z0-9_])(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:e[+\-]?[0-9]+)?[a-z]*"=>s->string(_spice_number(s)))
+    number=dialect===:spectre ? _spectre_number : _spice_number
+    t=replace(dialect===:spectre ? t : lowercase(t),
+        r"(?<![a-zA-Z0-9_])(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+\-]?[0-9]+)?[a-zA-Z_%]*"=>s->string(number(s)))
     ast=Meta.parse(t;raise=true);count=Ref(0)
     function evaluate(a,depth)
         count[]+=1;count[]<=512 && depth<=32 || throw(ArgumentError("SPICE expression exceeds bounds"))
@@ -171,12 +174,12 @@ function _spice_expression(text,values,budget=nothing)
     end
     evaluate(ast,1)
 end
-function _spice_setparams!(values,fields,budget=nothing)
+function _spice_setparams!(values,fields,budget=nothing;dialect::Symbol=:spice)
     for (k,v) in fields
         # Self-reference is not permitted by ngspice .param semantics.
         previous=pop!(values,k,nothing)
         try
-            values[k]=_spice_expression(v,values,budget)
+            values[k]=_spice_expression(v,values,budget;dialect)
         catch
             previous===nothing || (values[k]=previous)
             rethrow()
@@ -377,6 +380,7 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
     lib.dialect in (:spice,:spectre) || throw(ArgumentError("unsupported linear library dialect"))
     identifier(s)=_spice_library_identifier(lib,s)
     node_name(s)=_spice_library_node(lib,s)
+    expression(text,values,budget)=_spice_expression(text,values,budget;dialect=lib.dialect)
     b=_SpiceBudget(0,max_bytes,max_elements,0,max_depth);_spice_reserve!(b,lib.payload)
     elements=_SpiceElement[];nodes=Dict{String,Int}();names=Set{String}();pins=Dict{String,Int}();active=String[]
     pending=Tuple{String,Vector{String},Float64,_SpiceCard}[]
@@ -400,7 +404,7 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
     all(k->k in topdef.pins,keys(connections)) || throw(ArgumentError("unknown external SPICE pin"))
     for pin in topdef.pins;pins[pin]=node(get(connections,pin,"pin."*pin));end
     _spice_reserve!(b,512+128length(lib.parameters)+2sum(ncodeunits(k) for (k,_) in lib.parameters;init=0))
-    globals=Dict{String,Float64}();_spice_setparams!(globals,lib.parameters,b)
+    globals=Dict{String,Float64}();_spice_setparams!(globals,lib.parameters,b;dialect=lib.dialect)
     globalmodels=_spice_global_models(lib,globals,b)
     function instance(defname,map,parent,overrides,path,depth,inheritedmodels)
         depth<=max_depth || throw(ArgumentError("SPICE hierarchy depth exceeds limit"))
@@ -416,7 +420,7 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
         values=copy(parent)
         all(k->k in first.(def.defaults),keys(overrides)) || throw(ArgumentError("unknown subckt parameter override"))
         for (k,v) in def.defaults
-            values[k]=haskey(overrides,k) ? overrides[k] : _spice_expression(v,values,b)
+            values[k]=haskey(overrides,k) ? overrides[k] : expression(v,values,b)
         end
         models=_spice_line_scope(def.cards,values,inheritedmodels,b)
         push!(active,defname)
@@ -427,7 +431,10 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
         try
             for c in def.cards
                 t=c.tokens;kind=uppercase(first(t[1]))
-                if lowercase(t[1])==".param";_spice_setparams!(values,_spice_assignments(t[2:end]),b);continue;end
+                if lowercase(t[1])==".param"
+                    _spice_setparams!(values,_spice_assignments(t[2:end];dialect=lib.dialect),b;dialect=lib.dialect)
+                    continue
+                end
                 lowercase(t[1])==".model" && continue
                 localname=identifier(t[1]);localname in localnames && _spice_failure(c,"duplicate library element name")
                 push!(localnames,localname)
@@ -436,18 +443,18 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
                     marker=findfirst(x->lowercase(x)=="params:",t);marker!==nothing && (paramstart=marker)
                     sub=identifier(t[paramstart-1]);haskey(lib.definitions,sub) || _spice_failure(c,"undefined subckt $sub")
                     actual=t[2:paramstart-2];length(actual)==length(lib.definitions[sub].pins) || _spice_failure(c,"subckt pin count mismatch")
-                    pairs=_spice_assignments(t[paramstart+(marker===nothing ? 0 : 1):end])
+                    pairs=_spice_assignments(t[paramstart+(marker===nothing ? 0 : 1):end];dialect=lib.dialect)
                     length(unique(first.(pairs)))==length(pairs) || _spice_failure(c,"duplicate instance parameter")
                     _spice_reserve!(b,512+128*(length(pairs)+length(actual)))
-                    over=Dict(k=>_spice_expression(v,values,b) for (k,v) in pairs)
-                    instance(sub,Dict(p=>localnode(a) for (p,a) in zip(lib.definitions[sub].pins,actual)),values,over,path*"/"*localname,depth+1,models)
+                    child_overrides=Dict(k=>expression(v,values,b) for (k,v) in pairs)
+                    instance(sub,Dict(p=>localnode(a) for (p,a) in zip(lib.definitions[sub].pins,actual)),values,child_overrides,path*"/"*localname,depth+1,models)
                     continue
                 end
                 length(elements)+length(pending)<max_elements || _spice_failure(c,"expanded element/metadata limit")
                 fullname=path*"/"*localname;push!(names,fullname)
                 if kind=='K'
                     length(t)>=4 || _spice_failure(c,"K requires at least two inductors and a scalar coefficient")
-                    value=_spice_expression(t[end],values,b)
+                    value=expression(t[end],values,b)
                     isfinite(value) && -1<=value<=1 || _spice_failure(c,"K coefficient must be finite in -1:1")
                     _spice_reserve!(b,512+256length(t)+2ncodeunits(fullname))
                     push!(pending,(fullname,[path*"/"*identifier(s) for s in t[2:end-1]],value,c))
@@ -458,7 +465,7 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
                     length(t)>=5 || _spice_failure(c,"transmission line requires four terminals")
                     nds=localnode.(t[2:5])
                     spec=if kind=='T'
-                        _spice_t_spec(c,values,b)
+                        _spice_t_spec(c,values,b;expression)
                     else
                         length(t)==6 || _spice_failure(c,"O requires four terminals and one LTRA model; IC/transient instance fields are not supported")
                         key=identifier(t[6]);haskey(models,key) || _spice_failure(c,"undefined LTRA model $key")
@@ -476,26 +483,26 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
                     nportfiles[parsed.spec.file]=parsed.spec.sha256
                 elseif kind=='Z'
                     length(t)==6 || _spice_failure(c,"transformer requires four terminals and a ratio")
-                    nds=localnode.(t[2:5]);value=_spice_expression(t[6],values,b)
+                    nds=localnode.(t[2:5]);value=expression(t[6],values,b)
                     isfinite(value) && !iszero(value) || _spice_failure(c,"transformer ratio must be finite and nonzero")
                 elseif kind in ('R','L','C')
                     length(t)==4 || _spice_failure(c,"only scalar R/L/C cards are supported")
-                    nds=localnode.(t[2:3]);value=_spice_expression(t[4],values,b)
+                    nds=localnode.(t[2:3]);value=expression(t[4],values,b)
                 elseif kind in ('E','G')
                     length(t)==6 || kind=='G' && length(t)==9 && lowercase(t[7])=="m" && t[8]=="=" || _spice_failure(c,"only linear scalar E/G cards are supported")
-                    nds=localnode.(t[2:5]);value=_spice_expression(t[6],values,b)
-                    length(t)==9 && (value*=_spice_expression(t[9],values,b))
+                    nds=localnode.(t[2:5]);value=expression(t[6],values,b)
+                    length(t)==9 && (value*=expression(t[9],values,b))
                 elseif kind in ('F','H')
                     length(t)==5 || kind=='F' && length(t)==8 && lowercase(t[6])=="m" && t[7]=="=" || _spice_failure(c,"only linear scalar F/H cards are supported")
-                    nds=localnode.(t[2:3]);control=path*"/"*identifier(t[4]);value=_spice_expression(t[5],values,b)
-                    length(t)==8 && (value*=_spice_expression(t[8],values,b))
+                    nds=localnode.(t[2:3]);control=path*"/"*identifier(t[4]);value=expression(t[5],values,b)
+                    length(t)==8 && (value*=expression(t[8],values,b))
                 elseif kind in ('V','I')
                     # A homogeneous AC network sets independent DC sources to
                     # zero small-signal excitation. Nonzero AC/transient sources
                     # need an affine response and are rejected, not discarded.
                     length(t) in (4,5) || _spice_failure(c,"only DC independent sources are supported")
                     length(t)==5 && lowercase(t[4])!="dc" && _spice_failure(c,"unsupported independent source")
-                    value=_spice_expression(t[end],values,b);nds=localnode.(t[2:3])
+                    value=expression(t[end],values,b);nds=localnode.(t[2:3])
                 else
                     _spice_failure(c,"unsupported element")
                 end
@@ -509,7 +516,7 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
     _spice_reserve!(b,512+128length(parameters)+2sum(ncodeunits(k) for k in keys(parameters);init=0))
     over=Dict{String,Float64}()
     for (k,v) in parameters
-        key=_spice_identifier(k);haskey(over,key) && throw(ArgumentError("duplicate case-insensitive parameter override"))
+        key=identifier(k);haskey(over,key) && throw(ArgumentError("duplicate library parameter override"))
         v isa Real && isfinite(v) || throw(ArgumentError("parameter overrides must be finite real numbers"))
         over[key]=_circuit_stored_real(v,"SPICE parameter override")
     end

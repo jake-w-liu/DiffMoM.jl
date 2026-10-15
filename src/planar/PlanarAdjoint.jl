@@ -499,7 +499,10 @@ function _checked_objective(f, Y::Matrix{ComplexF64})
             "$(typeof(v))"))
     isfinite(v) ||
         throw(ArgumentError("planar objective returned $v"))
-    return Float64(v)
+    stored = Float64(v)
+    isfinite(stored) || throw(ArgumentError(
+        "planar objective must fit a finite Float64 value"))
+    return stored
 end
 
 # ---------------- objective gradient ----------------
