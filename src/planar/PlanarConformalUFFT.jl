@@ -153,11 +153,15 @@ function planar_conformal_ufft_operator(prob::PlanarConformalProblem,freq::Numbe
     return PlanarConformalUFFTOperator(nb,prob,grid,mg,families,ct,cm,kt,km,st,sm,ft,fm,lattice,forward,backward,loss,zeros(ComplexF64,nb))
 end
 
+function _planar_conformal_ufft_workspace_alias(A,x)
+    Base.mightalias(x,A.output)||Base.mightalias(x,A.lattice)||Base.mightalias(x,A.source_te)||
+        Base.mightalias(x,A.source_tm)||Base.mightalias(x,A.field_te)||Base.mightalias(x,A.field_tm)
+end
+
 function LinearAlgebra.mul!(y::AbstractVector,A::PlanarConformalUFFTOperator,x::AbstractVector,alpha::Number,beta::Number)
     length(y)==length(x)==A.n || throw(DimensionMismatch("conformal FFT vector size mismatch"))
-    (Base.mightalias(x,A.output)||Base.mightalias(x,A.lattice)||Base.mightalias(x,A.source_te)||
-        Base.mightalias(x,A.source_tm)||Base.mightalias(x,A.field_te)||Base.mightalias(x,A.field_tm)) &&
-        throw(ArgumentError("conformal FFT input must not alias operator workspace"))
+    (_planar_conformal_ufft_workspace_alias(A,x)||_planar_conformal_ufft_workspace_alias(A,y)) &&
+        throw(ArgumentError("conformal FFT vectors must not alias operator workspaces"))
     st,sm,ft,fm=A.source_te,A.source_tm,A.field_te,A.field_tm
     fill!(st,0);fill!(sm,0);F=A.lattice;px,py=size(F);mg=A.modes
     for (f,family) in enumerate(A.families)

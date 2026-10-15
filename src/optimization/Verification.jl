@@ -62,6 +62,10 @@ function _complex_step_grad_validated(f::Function,
             isfinite(derivative) ||
                 throw(OverflowError(
                     "complex-step derivative is non-finite at parameter $p"))
+            # A normal imaginary response already resolves the requested
+            # perturbation. Growing that step changes its truncation error
+            # and can overflow even a polynomial at a stationary point.
+            abs(signal) >= floatmin(Float64) && return derivative
             # A first nonzero subnormal signal can still carry very few
             # significant bits. Increase the exact power-of-two step until
             # two successive quotients agree; this preserves a linear
@@ -80,6 +84,25 @@ function _complex_step_grad_validated(f::Function,
         "complex-step response remained exactly zero after adaptive " *
         "representable perturbations at parameter $p; the derivative is " *
         "inconclusive"))
+end
+
+function _gradient_difference_quotient(first::Number, second::Number,
+                                       upper::Float64, lower::Float64)
+    difference = first - second
+    separation = upper - lower
+    derivative = difference / separation
+    if isfinite(difference) && isfinite(separation) && isfinite(derivative)
+        return derivative
+    end
+    # Finite samples and perturbations can have an unrepresentable difference
+    # while their ratio is finite. Retain both differences until the final
+    # conversion; the ordinary path keeps its original arithmetic and type.
+    return setprecision(BigFloat, 4352) do
+        first_big = first isa Real ? BigFloat(first) : Complex{BigFloat}(first)
+        second_big = second isa Real ? BigFloat(second) : Complex{BigFloat}(second)
+        value = (first_big - second_big) / (BigFloat(upper) - BigFloat(lower))
+        convert(typeof(derivative), value)
+    end
 end
 
 function _fd_grad_validated(f::Function,
@@ -104,11 +127,6 @@ function _fd_grad_validated(f::Function,
         minus != base ||
             throw(ArgumentError(
                 "h=$step is too small to perturb theta[$p]=$base"))
-        denominator = plus - minus
-        isfinite(denominator) && denominator > 0.0 ||
-            throw(ArgumentError(
-                "the representable central-difference perturbation is invalid"))
-
         tp = copy(theta)
         tm = copy(theta)
         tp[p] = plus
@@ -117,7 +135,7 @@ function _fd_grad_validated(f::Function,
             f(tp), "finite-difference objective")
         fm = _validated_gradient_value(
             f(tm), "finite-difference objective")
-        (fp - fm) / denominator
+        _gradient_difference_quotient(fp, fm, plus, minus)
     elseif scheme == :forward
         tp = copy(theta)
         tp[p] = plus
@@ -125,7 +143,7 @@ function _fd_grad_validated(f::Function,
             f(tp), "finite-difference objective")
         f0 = _validated_gradient_value(
             f(theta), "finite-difference objective")
-        (fp - f0) / (plus - base)
+        _gradient_difference_quotient(fp, f0, plus, base)
     else
         throw(ArgumentError(
             "Unknown FD scheme: $scheme (expected :central or :forward)"))

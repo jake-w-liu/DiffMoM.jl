@@ -53,6 +53,17 @@ _check_finite(Y::AbstractMatrix, what::AbstractString) =
     all(isfinite, Y) ||
     throw(ArgumentError("$what contains non-finite entries"))
 
+# Divide by angular frequency without materializing 2pi*f or value/f:
+# either intermediate may overflow even when the extracted constant fits.
+function _planar_extract_per_omega(value::Real, f::Real)
+    vm, ve = frexp(value)
+    fm, fe = frexp(float(f))
+    result = Float64(ldexp(vm / (2pi * fm), ve - fe))
+    isfinite(result) || throw(ArgumentError(
+        "extracted reactive line constant is outside finite Float64 range"))
+    return result
+end
+
 function _check_reciprocal(Y::AbstractMatrix, what::AbstractString)
     abs(Y[1, 2] - Y[2, 1]) <=
         1e-8 * max(abs(Y[1, 2]), abs(Y[2, 1]), floatmin(Float64)) ||
@@ -147,8 +158,8 @@ function _planar_multiconductor_rlgc(Y::AbstractMatrix, len::Float64, f::Real;
             "network is not a uniform multiconductor transmission-line section"))
     z = Matrix{ComplexF64}(H[left,right] * zref)
     y = Matrix{ComplexF64}(H[right,left] / zref)
-    omega = 2pi * f
-    l, c = imag.(z) / omega, imag.(y) / omega
+    l = _planar_extract_per_omega.(imag.(z), f)
+    c = _planar_extract_per_omega.(imag.(y), f)
     # Principal matrix-log extraction is unambiguous below half a
     # wavelength in every mode. Reject phase aliases yielding negative
     # stored energy instead of returning a plausible negative inductance.
@@ -194,12 +205,12 @@ planar_rlgc(cal::DoubleDelayCal, f::Real) =
 function _rlgc_of(zc::Number, gam::Number, f::Real)
     (isfinite(f) && f > 0) || throw(ArgumentError(
         "frequency must be finite and > 0, got $f"))
-    omega = 2pi * f
     z = ComplexF64(gam) * zc          # R + i w L  [Ohm/m]
     y = ComplexF64(gam) / zc          # G + i w C  [S/m]
     all(isfinite, (z, y)) || throw(ArgumentError(
         "extracted line constants are non-finite"))
-    return RLGC(z, y, real(z), imag(z) / omega, real(y), imag(y) / omega)
+    return RLGC(z, y, real(z), _planar_extract_per_omega(imag(z), f),
+        real(y), _planar_extract_per_omega(imag(y), f))
 end
 
 """    planar_pi_model(Y) -> PiModel
@@ -229,11 +240,11 @@ function planar_inductor(Y::AbstractMatrix, f::Real)
     (isfinite(f) && f > 0) || throw(ArgumentError(
         "frequency must be finite and > 0, got $f"))
     y = n == 1 ? Y[1, 1] : -Y[2, 1]
-    abs2(y) > eps(real(abs(y)))^2 || throw(ArgumentError(
+    !iszero(y) || throw(ArgumentError(
         "branch admittance is zero: no current path to extract"))
     z = inv(y)
     isfinite(z) || throw(ArgumentError(
         "extracted branch impedance is non-finite"))
-    return InductorParams(z, real(z), imag(z) / (2pi * f),
+    return InductorParams(z, real(z), _planar_extract_per_omega(imag(z), f),
         iszero(real(z)) ? sign(imag(z)) * Inf : imag(z) / real(z))
 end

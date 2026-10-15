@@ -377,7 +377,7 @@ Linear SPROJ children support literal R/L/C, Touchstone S<n>P, earlier DEF<n>P
 invocations and recursive PRJ children with literal 0/1 inheritance flags.
 They evaluate continuously at the requested frequency, retaining explicit
 INHSWP N/Y metadata; their saved child sweep is not interpolated. Shared
-dependencies parse once; cycles, root escapes and parameter bindings on
+dependencies with equal evaluated bindings parse once; cycles, root escapes and parameter bindings on
 linear children reject. `max_project_depth` bounds project recursion,
 and `max_project_nodes/max_project_elements` bound retained definitions in
 each project. Dense nested solves also share the aggregate `max_bytes` bound.
@@ -493,8 +493,8 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
     end
     projects=_SonnetLinearProjects(f,directory,budget,dependencies,depth,nodes,elements,
         sources,networks,Dict{String,PlanarCircuit}(),
-        Dict{String,Tuple{Matrix{ComplexF64},Vector{ComplexF64}}}(),Set([_sonnet_project_path_key(parent)]))
-    project_paths=Dict{Int,String}()
+        Dict{_SonnetProjectResponseKey,Tuple{Matrix{ComplexF64},Vector{ComplexF64}}}(),Set([_sonnet_project_path_key(parent)]))
+    project_keys=Dict{Int,_SonnetProjectResponseKey}()
     for d in descriptions
         d.kind.tokens[2]=="SPROJ" || continue
         path=_sonnet_files_path(directory,p,d.kind.tokens[3],d.kind)
@@ -503,7 +503,7 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
             child_vars[name]=sonnet_variable_value(p,value;variables,freq=f)
         end
         _sonnet_files_linear_project!(projects,path,length(d.labels),1,child_vars)
-        project_paths[d.id]=path
+        project_keys[d.id]=_sonnet_project_response_key(path,child_vars)
     end
     # Validate coverage and reserve every binding before any reference provider.
     for d in descriptions
@@ -522,13 +522,13 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
         path=if d.kind.tokens[2]=="SPARAM"
             _sonnet_files_path(directory,p,table[d.index]...)
         else
-            project_paths[d.id]
+            first(project_keys[d.id])
         end
         response,original=if d.kind.tokens[2]=="SPARAM"
             model=networks[path]
             planar_network_response(model,f),copy(_network_reference_at(model,f))
         else
-            value,refs=projects.responses[path]
+            value,refs=projects.responses[project_keys[d.id]]
             copy(value),copy(refs)
         end
         refs=requested_reference===nothing ? original : _planar_reference_values(requested_reference,np;freq=f)

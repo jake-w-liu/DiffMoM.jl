@@ -109,14 +109,15 @@ end
 const _DENSITY_INTERPOLATION_FALLBACK_PRECISION = 4352
 
 @noinline function _density_derivative_coefficient_bigfloat(
-        rho::Real, config::DensityConfig)
+        rho::Real, config::DensityConfig; preserve_range::Bool=false)
     return setprecision(
             BigFloat, _DENSITY_INTERPOLATION_FALLBACK_PRECISION) do
         p = BigFloat(config.p)
         density_power = isone(config.p) ?
                         one(BigFloat) : BigFloat(rho)^(p - 1)
-        coefficient = ComplexF64(
-            -p * density_power * Complex{BigFloat}(config.Z_max))
+        exact_coefficient = -p * density_power * Complex{BigFloat}(config.Z_max)
+        preserve_range && return exact_coefficient
+        coefficient = ComplexF64(exact_coefficient)
         isfinite(coefficient) ||
             throw(OverflowError(
                 "density derivative coefficient is outside the " *
@@ -126,13 +127,19 @@ const _DENSITY_INTERPOLATION_FALLBACK_PRECISION = 4352
 end
 
 @inline function _density_derivative_coefficient(
-        rho::Real, config::DensityConfig)
+        rho::Real, config::DensityConfig; preserve_range::Bool=false)
     density_power = isone(config.p) ? one(Float64) :
                     rho^(config.p - 1)
     coefficient = -config.p * density_power * config.Z_max
     if !isfinite(coefficient) ||
-       (!iszero(rho) && iszero(coefficient))
-        return _density_derivative_coefficient_bigfloat(rho, config)
+       (!iszero(rho) && iszero(coefficient)) ||
+       (preserve_range &&
+        (_ieee_dense_extreme_factor(density_power, Float64) ||
+         _ieee_dense_extreme_factor(config.p, Float64) ||
+         _ieee_dense_extreme_factor(config.Z_max, Float64) ||
+         _ieee_dense_extreme_factor(coefficient, Float64)))
+        return _density_derivative_coefficient_bigfloat(
+            rho, config; preserve_range=preserve_range)
     end
     return coefficient
 end
@@ -283,7 +290,18 @@ function _scale_density_derivative(
 end
 
 function _scale_density_derivative(
-        coefficient::ComplexF64,
+        coefficient::Complex{BigFloat},
+        matrix::LocalMassMatrix,
+        triangle::Int)
+    values = [_checked_number_product(
+        ComplexF64, coefficient, matrix.vals[index],
+        "density derivative for triangle $triangle", index)
+        for index in eachindex(matrix.vals)]
+    return LocalMassMatrix(matrix.n, copy(matrix.rows), copy(matrix.cols), values)
+end
+
+function _scale_density_derivative(
+        coefficient::Number,
         matrix::SparseArrays.AbstractSparseMatrixCSC,
         triangle::Int)
     derivative = SparseMatrixCSC{ComplexF64,Int}(
@@ -309,7 +327,7 @@ function _scale_density_derivative(
 end
 
 function _scale_density_derivative(
-        coefficient::ComplexF64,
+        coefficient::Number,
         matrix::AbstractMatrix,
         triangle::Int)
     derivative = Matrix{ComplexF64}(undef, size(matrix))
@@ -330,7 +348,10 @@ function assemble_dZ_drhobar(Mt::Vector{<:AbstractMatrix},
                              config::DensityConfig, t::Int)
     1 <= t <= length(Mt) || throw(BoundsError(Mt, t))
     _validate_density_mass_inputs(Mt, rho_bar)
-    coefficient = _density_derivative_coefficient(rho_bar[t], config)
+    # The coefficient can lie outside Float64 while its product with every
+    # mass entry is finite. Round only the returned derivative entries.
+    coefficient = _density_derivative_coefficient(
+        rho_bar[t], config; preserve_range=true)
     derivative = _scale_density_derivative(coefficient, Mt[t], t)
     _density_matrix_entries_are_finite(derivative) ||
         throw(OverflowError(

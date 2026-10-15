@@ -296,7 +296,8 @@ and positive.
 """
 function _validate_filter_inputs(W::AbstractSparseMatrix,
                                  w_sum::AbstractVector{<:Real},
-                                 input::AbstractVector, transpose::Bool)
+                                 input::AbstractVector, transpose::Bool,
+                                 ::Type{T}=Nothing) where {T}
     expected_input = transpose ? size(W, 1) : size(W, 2)
     expected_sum = size(W, 1)
     length(input) == expected_input ||
@@ -305,23 +306,85 @@ function _validate_filter_inputs(W::AbstractSparseMatrix,
     length(w_sum) == expected_sum ||
         throw(DimensionMismatch(
             "w_sum length $(length(w_sum)) != $expected_sum"))
-    all(value -> isfinite(value) && value > 0, w_sum) ||
+    R = T === Nothing ? Nothing : typeof(real(zero(T)))
+    sums_valid, sums_wide = _filter_values_status(w_sum, R, true)
+    sums_valid ||
         throw(ArgumentError(
             "w_sum entries must all be finite and positive"))
-    all(isfinite, input) ||
+    input_valid, input_wide = _filter_values_status(input, R, false)
+    input_valid ||
         throw(ArgumentError(
             "filter input entries must all be finite"))
     matrix_values = W isa SparseMatrixCSC ? nonzeros(W) : W
-    all(isfinite, matrix_values) ||
+    matrix_valid, matrix_wide = _filter_values_status(matrix_values, R, false)
+    matrix_valid ||
         throw(ArgumentError(
             "filter weights must all be finite"))
-    return nothing
+    return T === Nothing ? nothing : sums_wide | input_wide | matrix_wide
+end
+
+@inline function _filter_values_status(values, ::Type{R}, positive::Bool) where {R}
+    if !(R <: Union{Float32,Float64})
+        valid = all(value -> isfinite(value) && (!positive || value > 0), values)
+        return valid, false
+    end
+    # Two factors, a reduction, and a division fit comfortably in this band.
+    # Compare magnitudes directly so the ordinary scan vectorizes without
+    # extracting an exponent for every stored sparse coefficient.
+    lower, upper = R === Float64 ? (0x1.0p-256, 0x1.0p256) :
+                                  (Float32(0x1.0p-16), Float32(0x1.0p16))
+    required = false
+    valid = true
+    @inbounds @simd for index in eachindex(values)
+        value = values[index]
+        valid &= isfinite(value) && (!positive || real(value) > 0)
+        real_scale = abs(R(real(value)))
+        imag_scale = abs(R(imag(value)))
+        required |= ((!iszero(real_scale)) & (real_scale < lower)) |
+                    (real_scale > upper) |
+                    ((!iszero(imag_scale)) & (imag_scale < lower)) |
+                    (imag_scale > upper)
+    end
+    return valid, required
+end
+
+@noinline function _filter_wide_arithmetic(
+        W::AbstractSparseMatrix, w_sum, input, transpose::Bool,
+        ::Type{T}) where {T}
+    return setprecision(BigFloat, _IEEE_SCALED_BILINEAR_FALLBACK_PRECISION) do
+        weights = W isa SparseMatrixCSC ? W : sparse(W)
+        rows, values = rowvals(weights), nonzeros(weights)
+        wide_type = T <: Real ? BigFloat : Complex{BigFloat}
+        output_count = transpose ? size(W, 2) : size(W, 1)
+        totals = zeros(wide_type, output_count)
+        @inbounds for column in 1:size(W, 2)
+            for index in nzrange(weights, column)
+                row = rows[index]
+                if transpose
+                    totals[column] += conj(wide_type(values[index])) *
+                                      wide_type(input[row]) / BigFloat(w_sum[row])
+                else
+                    totals[row] += wide_type(values[index]) * wide_type(input[column])
+                end
+            end
+        end
+        result = Vector{T}(undef, output_count)
+        @inbounds for index in eachindex(result)
+            value = transpose ? totals[index] : totals[index] / BigFloat(w_sum[index])
+            result[index] = T(value)
+        end
+        all(isfinite, result) ||
+            throw(OverflowError("density filter output is outside the representable range"))
+        return result
+    end
 end
 
 function apply_filter(W::AbstractSparseMatrix,
                       w_sum::AbstractVector{<:Real},
                       rho::AbstractVector)
-    _validate_filter_inputs(W, w_sum, rho, false)
+    result_type = Base.promote_op(*, eltype(W), eltype(rho))
+    _validate_filter_inputs(W, w_sum, rho, false, result_type) &&
+        return _filter_wide_arithmetic(W, w_sum, rho, false, result_type)
     result = W * rho
     result ./= w_sum
     all(isfinite, result) ||
@@ -343,7 +406,10 @@ and positive.
 function apply_filter_transpose(W::AbstractSparseMatrix,
                                 w_sum::AbstractVector{<:Real},
                                 g_rho_tilde::AbstractVector)
-    _validate_filter_inputs(W, w_sum, g_rho_tilde, true)
+    scaled_type = Base.promote_op(/, eltype(g_rho_tilde), eltype(w_sum))
+    result_type = Base.promote_op(*, eltype(W), scaled_type)
+    _validate_filter_inputs(W, w_sum, g_rho_tilde, true, result_type) &&
+        return _filter_wide_arithmetic(W, w_sum, g_rho_tilde, true, result_type)
     result = W' * (g_rho_tilde ./ w_sum)
     all(isfinite, result) ||
         throw(OverflowError(
@@ -355,10 +421,11 @@ end
 function apply_filter_transpose(W::SparseMatrixCSC,
                                 w_sum::AbstractVector{<:Real},
                                 g_rho_tilde::AbstractVector)
-    _validate_filter_inputs(W, w_sum, g_rho_tilde, true)
     scaled_type = Base.promote_op(
         /, eltype(g_rho_tilde), eltype(w_sum))
     result_type = Base.promote_op(*, eltype(W), scaled_type)
+    _validate_filter_inputs(W, w_sum, g_rho_tilde, true, result_type) &&
+        return _filter_wide_arithmetic(W, w_sum, g_rho_tilde, true, result_type)
     result = zeros(result_type, size(W, 2))
     rows = rowvals(W)
     values = nonzeros(W)
@@ -533,7 +600,7 @@ function heaviside_project(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
         # The analytical projection maps [0,1] into [0,1]. Log-domain
         # reconstruction can overshoot an endpoint by a few ulps after the
         # exact value has saturated there; clamp that rounding artifact.
-        bounded = clamp(value, 0.0, 1.0)
+        bounded = 0.0 <= rt <= 1.0 ? clamp(value, 0.0, 1.0) : value
         # Preserve the mathematical monotonicity for already sorted inputs
         # when saturated log-domain values differ only through rounding.
         if rt >= previous_rt && bounded < previous_value

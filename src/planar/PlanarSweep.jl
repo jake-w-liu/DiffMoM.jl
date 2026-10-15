@@ -500,44 +500,45 @@ function planar_box_resonances(stack::PlanarStackup{T},
         accept(fs[1], r[1])
         accept(fs[end], r[end])
         for j in 2:(nsamp - 1)
-            # sign change of the reactive part (lossless stacks carry a
-            # purely imaginary residual) or a strict |r| local minimum
-            bracket = if sign(imag(r[j - 1])) != sign(imag(r[j + 1])) &&
-                         imag(r[j - 1]) != 0 && imag(r[j + 1]) != 0
-                (fs[j - 1], fs[j + 1])
-            elseif abs(r[j]) < abs(r[j - 1]) && abs(r[j]) < abs(r[j + 1]) &&
-                    abs(r[j]) < 0.02 * scale
-                (fs[j - 1], fs[j + 1])
-            else
-                nothing
+            # A mixed PEC/PMC cavity can have a purely real residual.
+            # Its phase also changes with the scaled layer representation,
+            # so bracket both components and retain the full-complex gate.
+            bracketed = false
+            for component in (imag, real)
+                left, right = component(r[j - 1]), component(r[j + 1])
+                if !iszero(left) && !iszero(right) && sign(left) != sign(right)
+                    bracketed = true
+                    fres = _bisect_residual(stack, kc2, pol, Int(iface),
+                        fs[j - 1], fs[j + 1], component)
+                    fres === nothing && continue
+                    accept(fres, _resonance_residual(stack, 2pi * fres,
+                        kc2, pol, Int(iface)))
+                end
             end
-            bracket === nothing && continue
-            lo, hi = bracket
-            fres = if sign(imag(r[j - 1])) != sign(imag(r[j + 1]))
-                _bisect_residual(stack, kc2, pol, Int(iface), lo, hi)
-            else
-                _golden_residual(stack, kc2, pol, Int(iface), lo, hi)
+            if !bracketed && abs(r[j]) < abs(r[j - 1]) &&
+                    abs(r[j]) < abs(r[j + 1]) && abs(r[j]) < 0.02 * scale
+                fres = _golden_residual(stack, kc2, pol, Int(iface),
+                    fs[j - 1], fs[j + 1])
+                fres === nothing && continue
+                accept(fres, _resonance_residual(stack, 2pi * fres,
+                    kc2, pol, Int(iface)))
             end
-            fres === nothing && continue
-            rstar = _resonance_residual(stack, 2pi * fres, kc2, pol,
-                Int(iface))
-            accept(fres, rstar)
         end
     end
     sort!(out; by=o -> o.freq)
     return out
 end
 
-function _bisect_residual(stack, kc2, pol, iface, lo, hi)
-    flo = imag(_resonance_residual(stack, 2pi * lo, kc2, pol, iface))
-    fhi = imag(_resonance_residual(stack, 2pi * hi, kc2, pol, iface))
+function _bisect_residual(stack, kc2, pol, iface, lo, hi, component=imag)
+    flo = component(_resonance_residual(stack, 2pi * lo, kc2, pol, iface))
+    fhi = component(_resonance_residual(stack, 2pi * hi, kc2, pol, iface))
     (isfinite(flo) && isfinite(fhi)) || return nothing
     iszero(flo) && return lo
     iszero(fhi) && return hi
     for _ in 1:80
         mid = lo + (hi - lo) / 2
         (mid == lo || mid == hi) && break
-        fmid = imag(_resonance_residual(stack, 2pi * mid, kc2, pol, iface))
+        fmid = component(_resonance_residual(stack, 2pi * mid, kc2, pol, iface))
         isfinite(fmid) || return nothing
         iszero(fmid) && return mid
         if sign(fmid) == sign(flo)

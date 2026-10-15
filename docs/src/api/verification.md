@@ -58,10 +58,11 @@ Its input contract is stricter than the finite-difference contract:
 3. `f` must be real at the supplied real parameter vector.
 4. Every evaluated value must be finite.
 
-If the requested perturbation produces an exactly zero imaginary response,
-the implementation increases the step by exact powers of two. It returns after
-two successive nonzero derivative estimates agree exactly, or throws when the
-response remains inconclusive.
+The requested perturbation is used directly when its imaginary response is
+normal. If the response is zero or subnormal, the implementation increases the
+step by exact powers of two until the response is normal or two successive
+nonzero derivative estimates agree exactly. It throws when the response
+remains inconclusive.
 
 This self-contained example satisfies the contract:
 

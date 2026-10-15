@@ -46,6 +46,46 @@ function _validate_scalar_epsr_gradient_result_3d(
     return nothing
 end
 
+@inline function _dda_material_gradient_range_requires_bigfloat(res, voxel::Int)
+    return _ieee_dense_extreme_factor(res.eps_r[voxel], Float64) ||
+           _ieee_dense_extreme_factor(res.grid.volumes[voxel], Float64) ||
+           any(value -> _ieee_dense_extreme_factor(value, Float64),
+               res.E_total[voxel])
+end
+
+# Keep the material derivative and interaction in extended range until their
+# contraction with lambda is complete. Either intermediate can underflow or
+# overflow in Float64 even when the returned real gradient is representable.
+@noinline function _dda_material_gradient_range_bigfloat(
+        res::DDAResult3D, lambda_flat::Vector{ComplexF64}, voxel::Int)
+    return setprecision(BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        eps_r = Complex{BigFloat}(res.eps_r[voxel])
+        abs(eps_r + 2) > 100 * eps(Float64) ||
+            error("Clausius-Mossotti polarizability derivative is singular for eps_r near -2.")
+        dalpha = 9 * BigFloat(res.grid.volumes[voxel]) / (eps_r + 2)^2
+        moment = _alpha_apply_bigfloat_vector_3d(
+            dalpha, res.E_total[voxel])
+        total = zero(BigFloat)
+        for observation_voxel in 1:res.grid.nvoxels
+            observation_voxel == voxel && continue
+            interaction = _electric_dipole_value_bigfloat_3d(
+                res.grid.centers[observation_voxel], res.grid.centers[voxel],
+                res.k0, moment)
+            lambda_value = _read_field_component(lambda_flat, observation_voxel)
+            for component in 1:3
+                total += real(conj(Complex{BigFloat}(lambda_value[component])) *
+                              interaction[component])
+            end
+        end
+        converted = Float64(2 * total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "DDA material gradient at voxel $voxel is outside the " *
+                "representable Float64 range."))
+        return converted
+    end
+end
+
 @inline function _dda_material_gradient_cancellation_requires_exact(
         total::Float64, magnitude_sum::Float64, product_count::Int)
     iszero(magnitude_sum) && return false
@@ -243,10 +283,22 @@ function gradient_epsr_dda_3d(res::DDAResult3D, lambda)
     lambda_flat = _coerce_adjoint_rhs_3d(lambda, N, "lambda")
     grad = zeros(Float64, N)
 
+    geometry_requires_bigfloat =
+        _source_scaling_extreme_value(res.k0) ||
+        any(center -> any(_source_scaling_extreme_value, center), res.grid.centers)
+
     for j in 1:N
-        Ej = res.E_total[j]
+        if geometry_requires_bigfloat ||
+           _dda_material_gradient_range_requires_bigfloat(res, j)
+            grad[j] = _dda_material_gradient_range_bigfloat(res, lambda_flat, j)
+            continue
+        end
         dalpha = _dalpha_depsr_clausius_mossotti(
             ComplexF64(res.eps_r[j]), res.grid.volumes[j])
+        if _ieee_dense_extreme_factor(dalpha, Float64)
+            grad[j] = _dda_material_gradient_range_bigfloat(res, lambda_flat, j)
+            continue
+        end
         total, needs_exact = _dda_material_gradient_fast(
             res, lambda_flat, j, dalpha)
         value = 2 * total

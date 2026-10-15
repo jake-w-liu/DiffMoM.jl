@@ -36,6 +36,24 @@ export deembed_double_delay_calibrate, deembed_double_delay_apply
 
 # ---------------- 2x2 ABCD <-> Y ----------------
 
+# Keep the normal scalar contraction allocation-free. Exceptional products
+# may overflow before cancellation even though the result is representable.
+function _deembed_product_sum(a::ComplexF64,b::ComplexF64,c::ComplexF64)
+    result=c+a*b
+    isfinite(result) && return result
+    bits=_planar_terminal_product_precision(2)
+    re,im,left,right,product=ntuple(_->BigFloat(0.;precision=bits),5)
+    _planar_wide_set!(re,real(c));_planar_wide_set!(im,imag(c))
+    for (x,y,target,subtract) in ((real(a),real(b),re,false),
+            (imag(a),imag(b),re,true),(real(a),imag(b),im,false),
+            (imag(a),real(b),im,false))
+        _planar_wide_set!(left,x);_planar_wide_set!(right,y)
+        _planar_wide_mul!(product,left,right)
+        subtract ? _planar_wide_sub!(target,target,product) : _planar_wide_add!(target,target,product)
+    end
+    return complex(Float64(re),Float64(im))
+end
+
 """ABCD (cascade) matrix of a transmission-line section: `zc` complex
 characteristic impedance [Ohm], `gl = gamma * len` complex electrical
 length.  e^{+i wt} convention."""
@@ -54,26 +72,34 @@ end
 function _abcd_of_y(Y::AbstractMatrix)
     size(Y) == (2, 2) || throw(DimensionMismatch(
         "2-port conversion needs a 2x2 matrix, got $(size(Y))"))
-    y21 = Y[2, 1]
-    abs2(y21) > eps(real(abs(y21)))^2 || throw(ArgumentError(
+    y11, y12 = _planar_stored_phasor(Y[1, 1]), _planar_stored_phasor(Y[1, 2])
+    y21, y22 = _planar_stored_phasor(Y[2, 1]), _planar_stored_phasor(Y[2, 2])
+    !iszero(y21) || throw(ArgumentError(
         "Y21 is zero: no through path, cannot form ABCD parameters"))
-    a = -Y[2, 2] / y21
+    a = -y22 / y21
     b = -inv(y21)
-    c = -(Y[1, 1] * Y[2, 2] - Y[1, 2] * y21) / y21
-    d = -Y[1, 1] / y21
-    return ComplexF64[a b; c d]
+    # Divide before multiplying: the determinant products can underflow
+    # or overflow even when each transfer coefficient is representable.
+    c = _deembed_product_sum(y11,a,y12)
+    d = -y11 / y21
+    result = ComplexF64[a b; c d]
+    all(isfinite, result) || throw(ArgumentError("Y conversion exceeds finite ABCD range"))
+    return result
 end
 
 # ABCD -> Y for a reciprocal 2-port
 function _y_of_abcd(T::AbstractMatrix)
     size(T) == (2, 2) || throw(DimensionMismatch(
         "ABCD conversion needs a 2x2 matrix, got $(size(T))"))
-    all(isfinite, T) || throw(ArgumentError("ABCD contains non-finite entries"))
-    b = T[1, 2]
-    abs2(b) > eps(real(abs(b)))^2 || throw(ArgumentError(
+    a, b = _planar_stored_phasor(T[1, 1]), _planar_stored_phasor(T[1, 2])
+    c, d = _planar_stored_phasor(T[2, 1]), _planar_stored_phasor(T[2, 2])
+    !iszero(b) || throw(ArgumentError(
         "ABCD B term is zero: cannot form Y parameters"))
-    return ComplexF64[T[2, 2] / b (T[2, 1] * b - T[1, 1] * T[2, 2]) / b;
-        -inv(b) T[1, 1] / b]
+    a_over_b = a / b
+    result = ComplexF64[d / b _deembed_product_sum(-d,a_over_b,c);
+        -inv(b) a_over_b]
+    all(isfinite, result) || throw(ArgumentError("ABCD conversion exceeds finite Y range"))
+    return result
 end
 
 # ---------------- per-port ABCD-chain de-embedding ----------------
@@ -161,6 +187,7 @@ function deembed_double_delay_calibrate(Yl::AbstractMatrix,
         Y2l::AbstractMatrix; len::Real, tol::Real=0.25)
     (isfinite(len) && len > 0) || throw(ArgumentError(
         "standard length must be finite and > 0, got $len"))
+    len = _circuit_stored_real(len, "calibration standard length")
     (isfinite(tol) && tol > 0) || throw(ArgumentError(
         "tol must be finite and > 0, got $tol"))
     Tl = _abcd_of_y(Yl)

@@ -16035,3 +16035,13 @@ include("test_planar_exact_eval_resources.jl")
 include("test_planar_layout_curve_geometry.jl")
 
 include("test_local_mass_dyadic_precision.jl")
+
+include("test_gradient_verification_range.jl")
+include("test_density_filter_ranges.jl")
+include("test_density_derivative_intermediate_range.jl")
+include("test_mom3d_gradient_intermediate_range.jl")
+include("test_planar_deembed_scalar_range.jl")
+include("test_planar_extraction_ranges.jl")
+include("test_planar_conformal_workspace_alias.jl")
+include("test_planar_resonance_layer_splitting.jl")
+include("test_planar_sonnet_shared_bindings.jl")

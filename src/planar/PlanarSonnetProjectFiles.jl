@@ -1,4 +1,8 @@
 # Bounded snapshot traversal for linear native project components.
+const _SonnetProjectResponseKey=Tuple{String,Tuple{Vararg{Pair{String,Float64}}}}
+_sonnet_project_response_key(path,bindings=nothing)=
+    (path,bindings===nothing ? () : Tuple(sort!(collect(bindings);by=first)))
+
 mutable struct _SonnetLinearProjects
     frequency::Float64
     root::String
@@ -10,7 +14,7 @@ mutable struct _SonnetLinearProjects
     sources::Dict{String,SonnetModelSource}
     networks::Dict{String,PlanarNetworkData}
     circuits::Dict{String,PlanarCircuit}
-    responses::Dict{String,Tuple{Matrix{ComplexF64},Vector{ComplexF64}}}
+    responses::Dict{_SonnetProjectResponseKey,Tuple{Matrix{ComplexF64},Vector{ComplexF64}}}
     active::Set{String}
 end
 _sonnet_project_path_key(path)=Sys.iswindows() ? lowercase(path) : path
@@ -60,8 +64,9 @@ function _sonnet_files_linear_project!(projects::_SonnetLinearProjects,path,np,d
     (key in projects.active || key in _SPROJ_CHAIN) &&
         throw(ArgumentError("recursive native project dependency"))
     depth<=projects.max_depth || throw(ArgumentError("native project depth exceeds max_project_depth"))
-    if haskey(projects.responses,path)
-        size(projects.responses[path][1],1)==np ||
+    response_key=_sonnet_project_response_key(path,bindings)
+    if haskey(projects.responses,response_key)
+        size(projects.responses[response_key][1],1)==np ||
             throw(ArgumentError("shared project has inconsistent pin count"))
         return nothing
     end
@@ -101,7 +106,7 @@ function _sonnet_files_linear_project!(projects::_SonnetLinearProjects,path,np,d
             _sonnet_files_reserve!(projects.budget,
                 _checked_array_payload_bytes(ComplexF64,12,np,np)+
                 _checked_array_payload_bytes(ComplexF64,12,np))
-            projects.responses[path]=(copy(result.s),copy(result.z0))
+            projects.responses[response_key]=(copy(result.s),copy(result.z0))
             return nothing
         end
         p isa SonnetNetlistProject || throw(ArgumentError(
@@ -180,7 +185,7 @@ function _sonnet_files_linear_project!(projects::_SonnetLinearProjects,path,np,d
                 for token in t[2:fileindex-1];terminal(token,row);end
                 dependency=_sonnet_files_path(projects.root,p,t[fileindex],row)
                 _sonnet_files_linear_project!(projects,dependency,count,depth+1)
-                value,refs=projects.responses[dependency]
+                value,refs=projects.responses[_sonnet_project_response_key(dependency)]
                 project_responses[abspath(joinpath(dirname(p.source),t[fileindex]))]=planar_renormalize_s(value,refs,50.)
                 count
             elseif haskey(definitions,kind)
@@ -226,7 +231,7 @@ function _sonnet_files_linear_project!(projects::_SonnetLinearProjects,path,np,d
             _definition_response=definition_response)
         result=solve_planar_circuit(circuit,frequency;max_bytes=remaining,floating_gauge=:auto)
         projects.circuits[path]=circuit
-        projects.responses[path]=(result.s,result.z0)
+        projects.responses[response_key]=(result.s,result.z0)
         return circuit
     finally
         delete!(projects.active,key)
