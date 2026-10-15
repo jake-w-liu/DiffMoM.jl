@@ -1,9 +1,14 @@
 using DiffMoM,Test,LinearAlgebra,Random
 
-function conformal_sign_quadrature(v,values,kx,ky;n=48)
+function conformal_sign_gauss_rule(n)
     beta=[j/sqrt(4j*j-1) for j in 1:n-1]
     quadrature=eigen(SymTridiagonal(zeros(n),beta))
-    nodes=(quadrature.values.+1)./2;weights=quadrature.vectors[1,:].^2
+    return (quadrature.values.+1)./2,quadrature.vectors[1,:].^2
+end
+const _CONFORMAL_SIGN_GAUSS48=conformal_sign_gauss_rule(48)
+
+function conformal_sign_quadrature(v,values,kx,ky;n=48)
+    nodes,weights=n==48 ? _CONFORMAL_SIGN_GAUSS48 : conformal_sign_gauss_rule(n)
     jacobian=abs(det(hcat(v[:,2]-v[:,1],v[:,3]-v[:,1])))
     value=0.0im
     for (i,u) in enumerate(nodes),(j,w) in enumerate(nodes)

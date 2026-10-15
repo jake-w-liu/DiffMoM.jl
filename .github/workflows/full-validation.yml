@@ -1,0 +1,29 @@
+name: Full validation
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full:
+    name: Scientific and native reference validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      JULIA_NUM_THREADS: 4
+      JULIA_NUM_PRECOMPILE_TASKS: 1
+      OPENBLAS_NUM_THREADS: 1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.13'
+      - uses: julia-actions/cache@v3
+        with:
+          cache-name: diffmom-julia-cache-v2
+          save-always: false
+      - uses: julia-actions/julia-buildpkg@v1
+      - name: Run full reference validation
+        run: julia --project=. --startup-file=no -e 'using Pkg; Pkg.test(test_args=["full"])'

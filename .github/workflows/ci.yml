@@ -52,7 +52,8 @@ jobs:
           cache-name: diffmom-julia-cache-v2
           save-always: false
       - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-runtest@v1
+      - name: Run focused regression suite
+        uses: julia-actions/julia-runtest@v1
         with:
           # No coverage artifact is consumed in this matrix. Julia's
           # coverage-instrumented precompile exceeded an hour on Windows.

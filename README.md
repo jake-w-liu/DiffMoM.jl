@@ -150,11 +150,24 @@ res = solve_sonnet_conformal("coupon.son", 10e9;
 
 ## Validation
 
-Regression suite:
+Focused regression suite (also run on every push and pull request):
 
 ```bash
 julia --project=. --startup-file=no -e 'using Pkg; Pkg.test()'
 ```
+
+This runs package-quality checks, small independent scientific/planar solver
+comparisons, and targeted numerical, ownership, and allocation regressions.
+Fixtures are shared within each case; large native corpora, mesh-convergence
+studies, Monte Carlo checks, and subprocess RSS probes run separately:
+
+```bash
+julia --project=. --startup-file=no -e 'using Pkg; Pkg.test(test_args=["full"])'
+```
+
+The same comprehensive suite is available through the manually triggered
+**Full validation** GitHub Actions workflow for release checks, native-reference
+updates, and convergence or resource investigations.
 
 Analytical and internal checks:
 
@@ -189,7 +202,7 @@ listed under `validation/meep/requirements.txt`.
 ## Repository Layout
 
 - `src/` - package source, module entrypoint, solvers, assembly, postprocessing, optimization, and material models.
-- `test/` - sequential regression tests covering surface MoM, periodic topology, 2D/3D material solvers, FFT DDA, EM DDA, dielectric SIE, and the planar/Sonnet/artwork stack.
+- `test/` - focused default regressions and an explicit full scientific/native-reference validation suite.
 - `examples/` - runnable examples from basic PEC plates through periodic topology optimization and PO/PTD comparisons.
 - `docs/` - Documenter.jl manual and API reference, including the Sonnet
   parity ledger (`docs/src/advanced/sonnet-parity.md`) recording

@@ -981,6 +981,17 @@ end
     end
     project=read_sonnet_project(joinpath(fixture,"cup.son"))
     template=replace(read(joinpath(fixture,"cup.son"),String),"\r\n"=>"\n")
+    # Only this unchanged baseline is reused; edited projects below are
+    # solved independently. Keep small responses, with fresh arrays for
+    # every reader, rather than retaining numerical factors or mutable aliases.
+    responses=Dict{Tuple{Float64,Bool},NamedTuple}()
+    function baseline_response(f;raw=false)
+        saved=get!(responses,(Float64(f),raw)) do
+            result=solve_sonnet_project(project,f;raw)
+            (;s=copy(result.s),y=copy(result.y),voltage_transfer=copy(result.voltage_transfer))
+        end
+        return deepcopy(saved)
+    end
 
     # Staging: the interior open-edge CUP stages a marginal junction
     # standard — one full host-pad solve plus one solve per member with
@@ -1004,8 +1015,7 @@ end
     # The removal is the launch cells' self-capacitance: pure shunt
     # susceptance, exactly proportional to frequency, bounded near the
     # measured ~9uS at 1GHz (Lite removes 5.95uS on this fixture).
-    removed=f->imag((solve_sonnet_project(project,f;raw=true).y-
-        solve_sonnet_project(project,f).y)[1,1])
+    removed=f->imag((baseline_response(f;raw=true).y-baseline_response(f).y)[1,1])
     for (f,lo,hi) in ((1e6,5e-9,2e-8),(1e9,5e-6,2e-5),(1e10,5e-5,2e-4))
         @test lo<removed(f)<hi
     end
@@ -1027,7 +1037,7 @@ end
             f in (1e9,1e10) || continue
             native=ComplexF64[row[2]+row[3]im row[6]+row[7]im;
                               row[4]+row[5]im row[8]+row[9]im]
-            ours=solve_sonnet_project(project,f;raw=mode)
+            ours=baseline_response(f;raw=mode)
             terms=name=="geo_response_d.sid" ? ((1,1),(2,1),(1,2)) :
                 ((1,1),(2,1),(1,2),(2,2))
             @test maximum(abs(ours.s[i...]-native[i...]) for i in terms)<=
@@ -1038,8 +1048,8 @@ end
     # raw=true leaves the network untouched: no standard is applied. The
     # launch-box removal moves the wall port's reference plane, so the
     # voltage transfer shifts only at machine level.
-    ours_raw=solve_sonnet_project(project,1e9;raw=true)
-    ours_cal=solve_sonnet_project(project,1e9)
+    ours_raw=baseline_response(1e9;raw=true)
+    ours_cal=baseline_response(1e9)
     @test ours_cal.y!=ours_raw.y
     @test ours_cal.voltage_transfer≈ours_raw.voltage_transfer
 

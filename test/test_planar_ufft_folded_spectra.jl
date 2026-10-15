@@ -2,8 +2,8 @@ using DiffMoM,Test,LinearAlgebra
 
 function _folded_result_matvec_bytes(result)
     x=view(result.currents,:,1);out=zeros(ComplexF64,length(x))
-    for _ in 1:30;mul!(out,result.operator,x);end
-    minimum(@allocated(mul!(out,result.operator,x)) for _ in 1:5)
+    mul!(out,result.operator,x) # warm this specialization and its FFT plans
+    @allocated mul!(out,result.operator,x)
 end
 
 @testset "FFT vectors reject owned workspace aliases before mutation" begin
