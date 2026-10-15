@@ -1,19 +1,7 @@
 using DiffMoM,Test,LinearAlgebra,SHA,TOML,JSON
+include(joinpath(@__DIR__, "helpers", "retained_spice_wave.jl"))
 const _coupled_fixture=joinpath(@__DIR__,"fixtures","spice_coupling_ngspice47")
 
-function _retained_spice_wave(path,np,z0)
-    lines=readlines(path);frequencies=Float64[];columns=Vector{ComplexF64}[]
-    for line in lines[2:end]
-        t=parse.(Float64,split(line));@test length(t)==1+4np
-        push!(frequencies,t[1]);wave=ComplexF64[]
-        for p in 1:np
-            voltage=complex(t[4p-2],t[4p-1]);current=-complex(t[4p],t[4p+1])
-            push!(wave,(voltage-z0[p]*current)/(2sqrt(z0[p])))
-        end
-        push!(columns,wave)
-    end
-    frequencies,columns
-end
 
 @testset "Coupled SPICE metadata and retained actual ngspice full S" begin
     hashes=JSON.parse(read(joinpath(_coupled_fixture,"sha256.json"),String))

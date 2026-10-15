@@ -504,6 +504,39 @@ function _quadratic_output_factor_moments(outputs, weight)
     return (mean=expected, variance=variance)
 end
 
+function _quadratic_output_factor_mean(outputs, weight, ::Type{T}) where {T}
+    factor = outputs.square_root
+    all(isfinite, factor) ||
+        throw(ArgumentError("output square-root factor must be finite"))
+    if all(iszero, factor)
+        return all(iszero, outputs.mean) ? zero(T) : _quadratic_output_bilinear(
+            outputs.mean, weight, outputs.mean, Val(:real), T)
+    end
+    if T <: Union{Float32,Float64} &&
+       _ieee_bilinear_superaccumulator_supported(outputs.mean, weight, outputs.mean, T) &&
+       _ieee_bilinear_supported_eltype(eltype(factor), T)
+        accumulator = _IEEEBilinearAccumulator(T)
+        _accumulate_bilinear_component_ieee!(
+            accumulator, outputs.mean, weight, outputs.mean, Val(:real))
+        for column in axes(factor, 2)
+            values = view(factor, :, column)
+            _accumulate_bilinear_component_ieee!(
+                accumulator, values, weight, values, Val(:real))
+        end
+        return _ieee_bilinear_finish(accumulator, "quadratic output mean")
+    end
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        expected = _accumulate_bilinear_component_bigfloat(
+            outputs.mean, weight, outputs.mean, Val(:real))
+        for column in axes(factor, 2)
+            values = view(factor, :, column)
+            expected += _accumulate_bilinear_component_bigfloat(
+                values, weight, values, Val(:real))
+        end
+        convert(T, expected)
+    end
+end
+
 """
     quadratic_output_moments(outputs, W)
 
@@ -537,13 +570,24 @@ function quadratic_output_moments(outputs::ErrorOutputs, weight::AbstractMatrix{
     # terms even for a perfectly valid Gaussian covariance. In that case
     # use the equivalent sum of squared latent weights, which cannot erase
     # a positive variance by subtracting those squared terms.
+    weight_norm, mean_norm = norm(weight), norm(outputs.mean)
+    covariance_norm = norm(outputs.covariance)
+    expected_scale = (weight_norm * mean_norm) * mean_norm + weight_norm * covariance_norm
+    mean_requires_exact = !isfinite(expected) || !isfinite(expected_scale) ||
+                          abs(expected) <= 64eps(Float64) * expected_scale
     variance_scale = norm(product)^2 +
-                     2norm(outputs.covariance) * norm(weighted_mean)^2
+                     2covariance_norm * norm(weighted_mean)^2
     if !isfinite(variance) || !isfinite(variance_scale) ||
        variance < 0 || variance <= 64eps(Float64) * variance_scale
         stable = _quadratic_output_factor_moments(outputs, weight)
         expected, variance = stable.mean, stable.variance
     end
+    # Preserve cancellation within each quadratic form and between its mean
+    # and covariance contributions until one final conversion. Accumulate the
+    # original factor columns directly: SVD compression or rounded latent
+    # diagonal entries can erase a small, representable expectation.
+    mean_requires_exact &&
+        (expected = _quadratic_output_factor_mean(outputs, weight, typeof(expected)))
     isfinite(expected) && isfinite(variance) && variance >= 0 ||
         throw(ArgumentError("quadratic moments exceed the supported numerical range"))
     return (mean=expected, variance=variance)

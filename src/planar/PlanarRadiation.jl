@@ -433,11 +433,25 @@ function _planar_result_radiation_excitation(result::_PlanarFieldResult;
     end
     X=direct ? result.currents : _planar_coefficient_columns(result)
     current=_planar_terminal_current(result.y,v;max_bytes,retained_bytes=reserve);pin=_planar_accepted_power(v,current;max_bytes,retained_bytes=reserve)
-    tolerance=100eps(Float64)*norm(result.y)*sum(abs2,v)
+    tolerance=_planar_radiation_power_tolerance(result.y,v)
     isfinite(pin) && pin>=-tolerance || throw(ArgumentError("radiation gain requires finite nonnegative accepted power"))
     return (problem=source,coefficients=_planar_current_product(X,v),freq=real(result.freq),
         accepted_power=pin>0 ? pin : nothing,
         budget=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-reserve))
+end
+
+function _planar_radiation_power_tolerance(y,v)
+    tolerance=100eps(Float64)*norm(y)*sum(abs2,v)
+    isfinite(tolerance) && tolerance>0 && return tolerance
+    # Preserve the same relative roundoff bound when a large voltage
+    # squares beyond range before multiplication by a small admittance.
+    ys=maximum(z->max(abs(real(z)),abs(imag(z))),y;init=0.)
+    vs=maximum(z->max(abs(real(z)),abs(imag(z))),v;init=0.)
+    (iszero(ys) || iszero(vs)) && return 0.
+    yn=sum(abs2(real(z)/ys)+abs2(imag(z)/ys) for z in y)
+    vn=sum(abs2(real(z)/vs)+abs2(imag(z)/vs) for z in v)
+    mantissa,power=_planar_metal_product_parts((100eps(Float64),ys,sqrt(yn),vs,vs,vn))
+    return ldexp(mantissa,power)
 end
 
 """Far field of a solved network. The default sets `port` to one volt and
@@ -488,12 +502,47 @@ function planar_radiated_power(prob::Union{PlanarProblem,PlanarConformalProblem,
     function integrate(nt,np)
         x,w=gauss_legendre(nt)
         pattern=planar_farfield(prob,coefficients,freq;theta=acos.(x),phi=[2pi*j/np for j in 0:np-1],radiation_stack,max_bytes=budget)
-        return sum(w[i]*pattern.intensity[i,j] for i in 1:nt,j in 1:np)*2pi/np
+        # Each positive contribution must carry its solid-angle weight
+        # before summation; the unnormalized azimuth sum can overflow
+        # even when the integrated power is representable.
+        azimuth=2pi/np
+        return sum((w[i]*azimuth)*pattern.intensity[i,j] for i in 1:nt,j in 1:np)
     end
     coarse=integrate(nt,np)
     fine=refine ? integrate(2nt,2np) : coarse
-    return (power=fine,coarse_power=coarse,relative_change=refine ? abs(fine-coarse)/max(fine,coarse,eps(Float64)) : nothing,
+    scale=max(fine,coarse)
+    return (power=fine,coarse_power=coarse,relative_change=refine ? (iszero(scale) ? 0. : abs(fine-coarse)/scale) : nothing,
         ntheta=refine ? 2nt : nt,nphi=refine ? 2np : np)
+end
+
+@inline function _planar_radiation_normalized_power(intensity,power)
+    weighted=4pi*intensity
+    return isfinite(weighted) ? weighted/power : 4pi*(intensity/power)
+end
+
+# Singular values of the two real polarization columns determine the
+# ellipse axes. Normalize before squaring and recover the minor axis
+# from their determinant, avoiding cancellation near linear polarization.
+@inline function _planar_radiation_axial_ratio(et,ep)
+    scale=max(abs(real(et)),abs(imag(et)),abs(real(ep)),abs(imag(ep)))
+    iszero(scale) && return NaN
+    xr,xi=real(et)/scale,imag(et)/scale
+    yr,yi=real(ep)/scale,imag(ep)/scale
+    a=xr*xr+xi*xi;b=yr*yr+yi*yi;c=xr*yr+xi*yi
+    major2=(a+b+hypot(a-b,2c))/2
+    left=xr*yi;right=xi*yr
+    determinant=(left-right)+(fma(xr,yi,-left)-fma(xi,yr,-right))
+    return iszero(determinant) ? Inf : max(1.,major2/abs(determinant))
+end
+
+@inline function _planar_radiation_circular_sum(x,y)
+    total=x+y
+    return isfinite(total) ? total/sqrt(2) : x/sqrt(2)+y/sqrt(2)
+end
+
+@inline function _planar_radiation_circular(et,ep,sign)
+    complex(_planar_radiation_circular_sum(real(et),-sign*imag(ep)),
+        _planar_radiation_circular_sum(imag(et),sign*real(ep)))
 end
 
 """Write complex polarized fields, intensity and accepted-power gain
@@ -508,7 +557,7 @@ function write_planar_radiation_csv(path::AbstractString,p::PlanarRadiationPatte
     open(path,"w") do io
         println(io,"frequency_hz,theta_rad,phi_rad,Etheta_real_V,Etheta_imag_V,Ephi_real_V,Ephi_imag_V,intensity_W_per_sr,gain")
         for j in eachindex(p.phi),i in eachindex(p.theta)
-            gain=p.accepted_power===nothing ? "" : string(4pi*p.intensity[i,j]/p.accepted_power)
+            gain=p.accepted_power===nothing ? "" : string(_planar_radiation_normalized_power(p.intensity[i,j],p.accepted_power))
             println(io,join((p.frequency,p.theta[i],p.phi[j],real(p.etheta[i,j]),imag(p.etheta[i,j]),real(p.ephi[i,j]),imag(p.ephi[i,j]),p.intensity[i,j],gain),','))
         end
     end
@@ -530,16 +579,11 @@ function planar_radiation_metrics(p::PlanarRadiationPattern;radiated_power=nothi
     size(p.ephi)==size(p.intensity)==shape || throw(DimensionMismatch("radiation data dimensions disagree"))
     all(isfinite,p.etheta) && all(isfinite,p.ephi) && all(u->isfinite(u) && u>=0,p.intensity) || throw(ArgumentError("radiation data must be finite"))
     _enforce_payload_limit(_checked_array_payload_bytes(Float64,24,shape...),max_bytes,"radiation metrics","max_bytes")
-    intensity=abs2.(p.etheta).+abs2.(p.ephi)
-    q=abs2.(p.etheta).-abs2.(p.ephi);u=2real.(p.etheta.*conj.(p.ephi))
-    spread=hypot.(q,u)
-    minor=max.(0.,(intensity.-spread)./2);major=(intensity.+spread)./2
-    ratio=[iszero(intensity[i]) ? NaN : iszero(minor[i]) ? Inf : sqrt(major[i]/minor[i]) for i in eachindex(intensity)]
-    return (circular_plus=(p.etheta.+im.*p.ephi)./sqrt(2),
-        circular_minus=(p.etheta.-im.*p.ephi)./sqrt(2),
-        axial_ratio=reshape(ratio,shape),
-        gain=accepted===nothing ? nothing : 4pi.*p.intensity./accepted,
-        directivity=radiated===nothing ? nothing : 4pi.*p.intensity./radiated,
+    return (circular_plus=_planar_radiation_circular.(p.etheta,p.ephi,1),
+        circular_minus=_planar_radiation_circular.(p.etheta,p.ephi,-1),
+        axial_ratio=_planar_radiation_axial_ratio.(p.etheta,p.ephi),
+        gain=accepted===nothing ? nothing : _planar_radiation_normalized_power.(p.intensity,accepted),
+        directivity=radiated===nothing ? nothing : _planar_radiation_normalized_power.(p.intensity,radiated),
         efficiency=radiated===nothing || accepted===nothing ? nothing : radiated/accepted)
 end
 
@@ -556,7 +600,7 @@ function plot_planar_radiation(p::PlanarRadiationPattern;quantity::Symbol=:inten
     quantity==:gain && accepted===nothing && throw(ArgumentError("gain requires accepted power"))
     quantity==:directivity && radiated===nothing && throw(ArgumentError("directivity requires integrated radiated power"))
     values=quantity==:etheta ? abs.(p.etheta) : quantity==:ephi ? abs.(p.ephi) :
-        quantity==:gain ? 4pi.*p.intensity./accepted : quantity==:directivity ? 4pi.*p.intensity./radiated : p.intensity
+        quantity==:gain ? _planar_radiation_normalized_power.(p.intensity,accepted) : quantity==:directivity ? _planar_radiation_normalized_power.(p.intensity,radiated) : p.intensity
     plotted=db ? (quantity in (:etheta,:ephi) ? 20log10.(values) : 10log10.(values)) : values
     sf=polar ? subplots(1,1;sync=false,show=false,title=String(title),width=Int(width),height=Int(height),
         specs=reshape([Spec(kind="polar")],1,1)) : _planar_plot_canvas(title,width,height)

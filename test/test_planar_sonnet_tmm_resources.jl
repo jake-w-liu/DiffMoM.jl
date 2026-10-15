@@ -1,4 +1,6 @@
 using DiffMoM,Test
+include(joinpath(@__DIR__, "helpers", "native_floating_pad_project.jl"))
+include(joinpath(@__DIR__, "helpers", "synthetic_smd_project.jl"))
 
 function _native_tmm_resource_project(base,count;wall=false)
     polygons=copy(base.polygons)

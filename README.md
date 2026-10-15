@@ -168,6 +168,8 @@ julia --project=. --startup-file=no -e 'using Pkg; Pkg.test(test_args=["full"])'
 The same comprehensive suite is available through the manually triggered
 **Full validation** GitHub Actions workflow for release checks, native-reference
 updates, and convergence or resource investigations.
+Full validation runs sequential groups in fresh Julia processes to release
+compiler state between groups; any failed group fails the full run.
 
 Analytical and internal checks:
 

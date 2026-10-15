@@ -1,4 +1,5 @@
 using DiffMoM,Test
+include(joinpath(@__DIR__, "helpers", "native_floating_pad_project.jl"))
 
 function _native_stack_budget_project(base,count)
     box=copy(base.box);box[1]=string(count-1)

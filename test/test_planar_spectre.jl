@@ -1,4 +1,5 @@
 using DiffMoM,Test,LinearAlgebra,SHA,JSON
+include(joinpath(@__DIR__, "helpers", "retained_spice_wave.jl"))
 const _spectre_fixture=joinpath(@__DIR__,"fixtures","spice_spectre_ngspice47")
 
 @testset "Explicit Spectre native exports against retained actual ngspice Y and S" begin

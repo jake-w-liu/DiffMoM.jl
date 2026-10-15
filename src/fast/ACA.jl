@@ -566,6 +566,9 @@ function aca_lowrank(cache::EFIEApplyCache,
     _enforce_payload_limit(
         planned_bytes, max_output_bytes,
         "ACA low-rank factors", "max_output_bytes")
+    for indices in (row_indices,col_indices), index in indices
+        1<=index<=cache.rwg.nedges || throw(BoundsError(1:cache.rwg.nedges,index))
+    end
 
     U_cols = Vector{Vector{ComplexF64}}()
     V_cols = Vector{Vector{ComplexF64}}()
@@ -589,44 +592,54 @@ function aca_lowrank(cache::EFIEApplyCache,
     converged = false
 
     for k in 1:max_rank
-        # Compute residual row at pivot_row
-        ri = row_indices[pivot_row]
         row_vec = Vector{ComplexF64}(undef, n)
-        @inbounds for jj in 1:n
-            row_vec[jj] = _efie_entry(cache, ri, col_indices[jj])
-        end
-
-        # Subtract contributions from previous rank-1 terms
-        for prev in eachindex(U_cols)
-            u_val = U_cols[prev][pivot_row]
-            @inbounds for jj in 1:n
-                row_vec[jj] -= u_val * conj(V_cols[prev][jj])
-            end
-        end
-
-        # Find column pivot: max magnitude in residual row
         pivot_col = 0
-        best_val = 0.0
-        @inbounds for jj in 1:n
-            av = abs(row_vec[jj])
-            if av > best_val && !used_cols[jj]
-                best_val = av
-                pivot_col = jj
+        # Symmetry can give a legitimate EFIE block an exactly zero row.
+        # Search unused rows only after a zero residual pivot; unsuccessful
+        # rows do not consume the caller's rank budget.
+        while true
+            ri = row_indices[pivot_row]
+            @inbounds for jj in 1:n
+                row_vec[jj] = _efie_entry(cache, ri, col_indices[jj])
             end
-        end
-
-        # If no valid pivot, try any column
-        if pivot_col == 0 || iszero(best_val)
-            for jj in 1:n
-                if !used_cols[jj]
-                    pivot_col = jj
-                    break
+            for prev in eachindex(U_cols)
+                u_val = U_cols[prev][pivot_row]
+                @inbounds for jj in 1:n
+                    row_vec[jj] -= u_val * conj(V_cols[prev][jj])
                 end
             end
-            pivot_col == 0 && break
-            best_val = abs(row_vec[pivot_col])
-            iszero(best_val) && break
+
+            pivot_col = 0
+            best_val = 0.0
+            @inbounds for jj in 1:n
+                av = abs(row_vec[jj])
+                if av > best_val && !used_cols[jj]
+                    best_val = av
+                    pivot_col = jj
+                end
+            end
+            if pivot_col == 0
+                # Preserve nonfinite-pivot recovery rather than treating
+                # NaNs as evidence that the remaining block is zero.
+                for jj in 1:n
+                    if !used_cols[jj]
+                        pivot_col = jj
+                        break
+                    end
+                end
+                pivot_col == 0 && break
+                best_val = abs(row_vec[pivot_col])
+            end
+            !iszero(best_val) && break
+            used_rows[pivot_row] = true
+            next_row = findfirst(!,used_rows)
+            if next_row === nothing
+                pivot_col = 0
+                break
+            end
+            pivot_row = next_row
         end
+        pivot_col == 0 && break
 
         pivot_val = row_vec[pivot_col]
 
@@ -715,8 +728,11 @@ function aca_lowrank(cache::EFIEApplyCache,
         end
 
         if next_row == 0
-            # All rows used
-            break
+            # A zero in this residual column does not imply that every
+            # other residual column vanishes on the unused rows.
+            remaining_row = findfirst(!,used_rows)
+            remaining_row === nothing && break
+            next_row = remaining_row
         end
         pivot_row = next_row
     end

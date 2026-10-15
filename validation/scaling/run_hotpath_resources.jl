@@ -52,6 +52,22 @@ function main()
     record("radiated power, 200 directions", () -> radiated_power(fields, grid))
     record("PEC Mie, size parameter 10", () -> mie_s1s2_pec(10.0, 0.3))
 
+    # Increase geometry and unknown count together so both fast operators
+    # exercise far interactions, rather than a near-only tiny fixture.
+    for side in (8, 16)
+        fast_mesh = make_rect_plate(2.0, 1.0, side, side)
+        fast_rwg = build_rwg(fast_mesh)
+        nfast = fast_rwg.nedges
+        fast_x = randn(rng, ComplexF64, nfast)
+        fast_y = similar(fast_x)
+        aca = build_aca_operator(fast_mesh, fast_rwg, k; leaf_size=16)
+        mlfma = build_mlfma_operator(fast_mesh, fast_rwg, k; leaf_lambda=0.25)
+        for (name, operator) in (("ACA", aca), ("MLFMA", mlfma))
+            record("$name mul!, $nfast RWGs", () -> mul!(fast_y, operator, fast_x))
+            record("$name adjoint, $nfast RWGs", () -> mul!(fast_y, adjoint(operator), fast_x))
+        end
+    end
+
     near_mesh = make_rect_plate(0.2, 0.15, 4, 4)
     near_rwg = build_rwg(near_mesh)
     near_current = randn(rng, ComplexF64, near_rwg.nedges)
@@ -60,6 +76,18 @@ function main()
     near_k = 2pi * 3e9 / 299792458.0
     record("near field, 40 RWGs/25 points", () -> compute_nearfield(
         near_mesh, near_rwg, near_current, observations, near_k))
+
+    po_grid = make_sph_grid(6, 12)
+    po_frequency = 3e9
+    po_wave = PlaneWaveExcitation(Vec3(0, 0, -near_k), 1.0, Vec3(1, 0, 0))
+    for side in (4, 8)
+        po_mesh = make_rect_plate(0.2, 0.15, side, side)
+        triangles = ntriangles(po_mesh)
+        record("PO, $triangles triangles/72 looks", () -> solve_po(
+            po_mesh, po_frequency, po_wave; grid=po_grid))
+        record("PTD, $triangles triangles/72 looks", () -> solve_ptd(
+            po_mesh, po_frequency, po_wave; grid=po_grid))
+    end
 
     filter_mesh = make_rect_plate(0.2, 0.15, 20, 20)
     weights, sums = build_filter_weights(filter_mesh, 0.025)

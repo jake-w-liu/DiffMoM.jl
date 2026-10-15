@@ -182,11 +182,11 @@ end
 # denominator difference, affine product or partial sum exceeds storage.
 # Exact rationals require no selected precision and preserve cancellation.
 # Shared pole inverses are computed once; original matrices are borrowed.
-function _vf_exact_eval(model,f,s,ordinary)
+function _vf_exact_eval(model,f,s,ordinary;max_bytes=nothing)
     all(isfinite,model.d) && all(isfinite,model.e) && all(isfinite,model.poles) &&
         all(R->all(isfinite,R),model.residues) || return ordinary
     if eltype(ordinary)===ComplexF64 && (isfinite(s) || f isa Union{Float16,Float32,Float64})
-        result=_vf_exact_eval_integer(model,f,s)
+        result=_vf_exact_eval_integer(model,f,s;max_bytes)
         return result===nothing ? ordinary : result
     end
     X=Complex{Rational{BigInt}}
@@ -206,8 +206,13 @@ function _vf_exact_eval(model,f,s,ordinary)
 end
 
 """Evaluate a real, stable N-port admittance model at frequency [Hz]."""
-function planar_rational_eval(model::PlanarRationalModel,f::Real)
+planar_rational_eval(model::PlanarRationalModel,f::Real)=_vf_rational_eval(model,f)
+
+function _vf_rational_eval(model::PlanarRationalModel,f::Real;max_bytes=nothing)
     isfinite(f) || throw(ArgumentError("model frequency must be finite"))
+    max_bytes===nothing || _enforce_payload_limit(
+        _checked_array_payload_bytes(ComplexF64,2,size(model.d)...),
+        max_bytes,"rational evaluation","max_bytes")
     s=2pi*1im*f
     # Retain the existing MPFR exponent-range contract. An exact integer
     # expansion beyond that boundary can require the full exponent's
@@ -237,7 +242,7 @@ function planar_rational_eval(model::PlanarRationalModel,f::Real)
         end
     end
     needs_exact |= !all(isfinite,Y)
-    return needs_exact ? _vf_exact_eval(model,f,s,Y) : Y
+    return needs_exact ? _vf_exact_eval(model,f,s,Y;max_bytes) : Y
 end
 
 function _vf_pair_indices(poles)
@@ -324,10 +329,10 @@ end
         (scale,squares+(magnitude/scale)^2)
 end
 
-function _vf_fit_errors(model,fs,Ys)
+function _vf_fit_errors(model,fs,Ys;max_bytes=nothing)
     errors=(0.0,0.0);data=(0.0,0.0)
     for k in eachindex(fs)
-        predicted=planar_rational_eval(model,fs[k])
+        predicted=_vf_rational_eval(model,fs[k];max_bytes)
         for index in eachindex(predicted,Ys[k])
             difference=predicted[index]-Ys[k][index]
             errors=_vf_scaled_square(_vf_scaled_square(errors,real(difference)),imag(difference))
@@ -433,15 +438,31 @@ At zero tolerance, passivity also checks exact stored Hermitian energy;
 the reported floating margin can round a subnormal direction to zero."""
 function planar_rational_passivity(model::PlanarRationalModel,frequencies;
         tol::Real=1e-9)
+    return _vf_sampled_passivity(model,frequencies;tol)
+end
+
+_vf_sample_workspace(n)=_checked_payload_sum("sampled passivity workspace",
+    _checked_array_payload_bytes(ComplexF64,8,n,n),
+    _checked_array_payload_bytes(Float64,6,n))
+
+function _vf_sampled_passivity(model,frequencies;tol,max_bytes=nothing)
     isfinite(tol) && tol >= 0 || throw(ArgumentError("passivity tolerance must be finite and nonnegative"))
+    reserved=if max_bytes===nothing
+        0
+    else
+        bytes=_checked_payload_sum("sampled passivity workspace",_vf_sample_workspace(size(model.d,1)),
+            _checked_array_payload_bytes(Float64,3,length(frequencies)))
+        _enforce_payload_limit(bytes,max_bytes,"sampled passivity workspace","max_bytes")
+    end
     fs = Float64.(collect(frequencies))
     !isempty(fs) && all(f -> isfinite(f) && f >= 0,fs) ||
         throw(ArgumentError("passivity grid must be nonempty, finite, and nonnegative"))
     margin = Inf
     exact_energy=true
     for f in fs
-        Y = planar_rational_eval(model,f)
-        iszero(tol) && (exact_energy &= _vf_psd(Y,tol;hermitian=true))
+        Y = _vf_rational_eval(model,f;max_bytes=max_bytes===nothing ? nothing : max_bytes-reserved)
+        iszero(tol) && (exact_energy &= max_bytes===nothing ? _vf_psd(Y,tol;hermitian=true) :
+            _vf_psd(Y,tol;hermitian=true,max_bytes=max_bytes-reserved))
         H=_vf_hermitian_part(Y)
         margin = min(margin,minimum(eigvals(Hermitian(H))))
     end
@@ -988,16 +1009,19 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
     n > 0 && all(Y -> size(Y)==(n,n) && all(isfinite,Y),series) ||
         throw(ArgumentError("fit matrices must be finite, square, and have equal sizes"))
     all(f -> isfinite(f) && f > 0,frequencies) || throw(ArgumentError("fit frequencies must be finite and positive"))
-    perm = sortperm(frequencies)
-    fs = Float64.(frequencies[perm])
-    all(diff(fs) .> 0) || throw(ArgumentError("fit frequencies must be distinct"))
     # QR elimination avoids the giant sparse-in-structure shared solve.
+    # Sorting and storing frequencies also own sample-sized arrays; reject
+    # insufficient workspace before creating those arrays.
     _enforce_payload_limit(_checked_payload_sum("vector fit",
         _checked_array_payload_bytes(ComplexF64,m,n,n),
         _checked_array_payload_bytes(Float64,8,m,n,n,order+2),
         _checked_array_payload_bytes(Float64,8,m,order+2),
-        _checked_array_payload_bytes(ComplexF64,2,order+2,n,n)),
+        _checked_array_payload_bytes(ComplexF64,2,order+2,n,n),
+        _checked_array_payload_bytes(Float64,3,n_passivity),_vf_sample_workspace(n)),
         max_bytes,"vector fit","max_bytes")
+    perm = sortperm(frequencies)
+    fs = Float64.(frequencies[perm])
+    all(diff(fs) .> 0) || throw(ArgumentError("fit frequencies must be distinct"))
     Ys = Matrix{ComplexF64}[]
     for index in perm
         # Preserve the same dense workspace while checking each stored
@@ -1060,29 +1084,44 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
         corrected = (corrected+transpose(corrected))/2
         capacitance_adjustment = norm(corrected-e)
         e .= corrected
+        decomposition=corrected=nothing
     end
+    # QR/relocation arrays are finished. Release them before sampled checks
+    # and certificates, which share the same budget with the fitted model.
+    basis=Ar=rhs=fitted=ci=perm=s=betas=nothing
     provisional = PlanarRationalModel(poles,residues,d,e,fs,NaN,NaN,false,false,:none,NaN,0,capacitance_adjustment)
+    seen=Base.IdSet{Any}()
+    retained=_checked_payload_sum("retained vector fit",
+        (_subdivision_retained_payload(array,seen) for array in (fs,Ys,poles,residues,d,e))...)
     grid = collect(range(0.0,last(fs);length=n_passivity))
-    check = planar_rational_passivity(provisional,grid;tol=passivity_tol)
+    check = _vf_sampled_passivity(provisional,grid;tol=passivity_tol,max_bytes=max_bytes-retained)
+    retained=_checked_payload_sum("retained vector fit sampling",retained,
+        _subdivision_retained_payload(grid,seen),_subdivision_retained_payload(check.frequencies,seen))
     shift = enforce_passivity && check.margin < -passivity_tol ?
         -check.margin+passivity_tol : 0.0
     for p in 1:n
         d[p,p] += shift
     end
-    certificate = planar_rational_certificate(provisional;max_bytes=max_bytes)
+    certificate = planar_rational_certificate(provisional;max_bytes=max_bytes-retained)
     if enforce_passivity && !certificate.certified
         # A global norm bound is conservative but exact: each Hermitian
         # residue contribution is bounded below by -||R||/|Re(p)|.
-        bound = _vf_frobenius_bound(provisional;max_bytes)
+        retained=_checked_payload_sum("retained vector fit certificate",retained,
+            _subdivision_retained_payload(certificate.crossings_hz,seen))
+        bound = _vf_frobenius_bound(provisional;max_bytes,retained_bytes=retained)
+        _enforce_payload_limit(_checked_payload_sum("vector fit repair",retained,_vf_sample_workspace(n)),
+            max_bytes,"vector fit repair","max_bytes")
         smallest_d = minimum(eigvals(LinearAlgebra.Symmetric((d+transpose(d))/2)))
         extra = max(bound-smallest_d,0)+max(passivity_tol,1e-12*max(bound,1.0))
         for p in 1:n
             d[p,p] += extra
         end
         shift += extra
-        certificate = planar_rational_certificate(provisional;max_bytes=max_bytes)
+        certificate = planar_rational_certificate(provisional;max_bytes=max_bytes-retained)
     end
-    rms,relative = _vf_fit_errors(provisional,fs,Ys)
+    retained=_checked_payload_sum("retained vector fit certificate",retained,
+        _subdivision_retained_payload(certificate.crossings_hz,seen))
+    rms,relative = _vf_fit_errors(provisional,fs,Ys;max_bytes=max_bytes-retained)
     margin = check.margin+shift
     return PlanarRationalModel(poles,residues,d,e,fs,rms,
         relative,margin>=-passivity_tol,

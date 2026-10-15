@@ -14,14 +14,11 @@ function _projected_power_component_bounds(values)
             isfinite(component) || return nothing
             iszero(component) && continue
             if component isa BigFloat
-                rational_component = Rational{BigInt}(component)
-                numerator_bits = abs(numerator(rational_component))
-                denominator_bits = denominator(rational_component)
-                denominator_exponent = ndigits(denominator_bits; base=2) - 1
-                high_bit = ndigits(numerator_bits; base=2) - 1 -
-                           denominator_exponent
-                low_bit = trailing_zeros(numerator_bits) -
-                          denominator_exponent
+                # Decompose the stored significand without expanding a
+                # potentially enormous binary exponent into a rational.
+                significand_bits, binary_exponent, _ = Base.decompose(component)
+                high_bit = ndigits(significand_bits; base=2) - 1 + binary_exponent
+                low_bit = trailing_zeros(significand_bits) + binary_exponent
             elseif component isa AbstractFloat
                 high_bit = exponent(abs(component))
                 component_precision = precision(component)
@@ -38,7 +35,7 @@ function _projected_power_component_bounds(values)
                     )
                     return nothing
                 end
-                isfinite(converted) || return nothing
+                isfinite(converted) && !iszero(converted) || return nothing
                 high_bit = exponent(abs(converted))
                 component_precision = precision(converted)
                 low_bit = high_bit - component_precision + 1
@@ -64,12 +61,14 @@ function _projected_power_fallback_precision(
     any(==(:zero), (weight_bounds, field_bounds, polarization_bounds)) &&
         return _PROJECTED_POWER_MIN_FALLBACK_PRECISION
 
-    minimum_bit = weight_bounds[1] +
-                  2 * field_bounds[1] +
-                  2 * polarization_bounds[1]
-    maximum_bit = weight_bounds[2] +
-                  2 * field_bounds[2] +
-                  2 * polarization_bounds[2] + 4
+    # MPFR exponents can approach the Int limits even for a tiny stored
+    # significand. Bound arithmetic must not wrap before the precision gate.
+    minimum_bit = BigInt(weight_bounds[1]) +
+                  2 * BigInt(field_bounds[1]) +
+                  2 * BigInt(polarization_bounds[1])
+    maximum_bit = BigInt(weight_bounds[2]) +
+                  2 * BigInt(field_bounds[2]) +
+                  2 * BigInt(polarization_bounds[2]) + 4
     # Five significands contribute at most four carry bits. The remaining 70
     # bits cover both complex square expansions and every Int-addressable
     # sample, so accumulation is exact at the selected precision.
@@ -79,7 +78,7 @@ function _projected_power_fallback_precision(
             "projected-power exact reduction requires $required_precision " *
             "bits, exceeding the supported limit " *
             "$_PROJECTED_POWER_FALLBACK_PRECISION"))
-    return max(required_precision, _PROJECTED_POWER_MIN_FALLBACK_PRECISION)
+    return max(Int(required_precision), _PROJECTED_POWER_MIN_FALLBACK_PRECISION)
 end
 
 function _validate_farfield_samples(E_ff::Matrix{<:Number}, grid::SphGrid)
